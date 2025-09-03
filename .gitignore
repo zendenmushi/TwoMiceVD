@@ -59,4 +59,8 @@ nunit-*.xml
 .vs/
 obj/
 
+# Visual Studio user-specific files
+*.csproj.user
+*.user
+
 
