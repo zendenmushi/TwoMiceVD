@@ -1,19 +1,11 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
     <UseWindowsForms>true</UseWindowsForms>
-    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <ApplicationIcon />
-    <StartupObject />
-    <AssemblyTitle>TwoMiceVD</AssemblyTitle>
-    <Product>TwoMiceVD</Product>
-    <Description>Automatic virtual desktop switching based on input from two physically distinct mice</Description>
-    <Copyright>Copyright © 2025</Copyright>
-    <AssemblyVersion>1.0.0.0</AssemblyVersion>
-    <FileVersion>1.0.0.0</FileVersion>
-    <SupportedOSPlatformVersion>7.0</SupportedOSPlatformVersion>
+    <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
 
   <ItemGroup>
