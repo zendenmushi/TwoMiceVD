@@ -15,7 +15,8 @@
 
 
   <ItemGroup>
-    <PackageReference Include="InputSimulator" Version="1.0.4" />
+    <!-- Switched from InputSimulator to H.InputSimulator -->
+    <PackageReference Include="H.InputSimulator" Version="1.5.0" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
   </ItemGroup>
 

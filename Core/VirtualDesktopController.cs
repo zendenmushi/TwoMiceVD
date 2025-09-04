@@ -3,8 +3,8 @@ using System.Collections.Generic;
 using System.Drawing;
 using TwoMiceVD.Configuration;
 using TwoMiceVD.Interop;
+// H.InputSimulator 1.5.0 exposes WindowsInput-compatible namespaces
 using WindowsInput;
-using WindowsInput.Native;
 using static TwoMiceVD.Interop.NativeMethods;
 
 namespace TwoMiceVD.Core;

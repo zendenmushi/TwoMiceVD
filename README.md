@@ -29,7 +29,7 @@ dotnet restore
 ```
 
 **必要なパッケージ:**
-- `InputSimulator` (1.0.4) - 仮想デスクトップ切り替え用
+- `H.InputSimulator` (1.5.0) - 仮想デスクトップ切り替え用（WindowsInput名前空間互換）
 - `Newtonsoft.Json` (13.0.3) - 設定ファイル管理用
 
 > **注意**: これらのパッケージはGitHubリポジトリには含まれません。上記コマンドで自動取得されます。

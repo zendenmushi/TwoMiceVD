@@ -10,7 +10,7 @@ TwoMiceVD/
 ├── Program.cs                      # アプリケーションエントリポイント
 ├── Core/                           # コア機能・ビジネスロジック
 │   ├── Events.cs                   # DeviceMovedEventArgs (共通イベント引数)
-│   ├── VirtualDesktopController.cs # 仮想デスクトップ制御 (InputSimulator使用)
+│   ├── VirtualDesktopController.cs # 仮想デスクトップ制御 (H.InputSimulator使用 / WindowsInput互換名前空間)
 │   ├── SwitchPolicy.cs             # 切り替えポリシー (閾値・ヒステリシス管理)
 │   └── MousePositionManager.cs     # マウスごとの位置記憶・復元機能
 ├── Input/                          # 入力処理レイヤー
@@ -45,7 +45,7 @@ TwoMiceVD/
 
 - **VirtualDesktopController.cs**
   - 仮想デスクトップ間の切り替え制御
-  - InputSimulatorを使用したキーボードショートカット送信
+  - H.InputSimulator (v1.5.0) を使用したキーボードショートカット送信（WindowsInput互換API）
   - デスクトップ間でのマウス位置記憶・復元機能
 
 - **SwitchPolicy.cs**
@@ -140,7 +140,7 @@ TwoMiceVD/
 
 - **.NET 8 (Windows Forms)**
 - **Raw Input API** - 複数マウス識別
-- **InputSimulator** - 仮想デスクトップ切り替え
+- **H.InputSimulator** - 仮想デスクトップ切り替え（v1.xはWindowsInput名前空間互換）
 - **Newtonsoft.Json** - 設定ファイル処理
 - **P/Invoke** - Windows API呼び出し
 
@@ -193,5 +193,5 @@ TwoMiceVD/
 
 - **ターゲット**: net8.0-windows
 - **出力タイプ**: WinExe (Windows実行ファイル)
-- **警告レベル**: エラー0個、警告2個（InputSimulator互換性のみ）
-- **NuGetパッケージ**: InputSimulator 1.0.4, Newtonsoft.Json 13.0.3
+- **警告レベル**: エラー0個、警告0個（パッケージ互換性の警告なし）
+- **NuGetパッケージ**: H.InputSimulator 1.5.0, Newtonsoft.Json 13.0.3
