@@ -92,8 +92,11 @@ internal class Program : ApplicationContext
         // （マウス位置の復元を最後にすることで上書きを防ぐ）
         _policy?.HandleMovement(e.DeviceId, e.DeltaX, e.DeltaY);
 
-        // マウス位置を継続的に更新（切り替え検知も内部で行う）
-        _mousePositionManager?.UpdateDevicePosition(e.DeviceId, e.DeltaX, e.DeltaY);
+        // 設定が有効な場合のみマウス位置管理を実行
+        if (_config?.EnableMousePositionMemory == true)
+        {
+            _mousePositionManager?.UpdateDevicePosition(e.DeviceId, e.DeltaX, e.DeltaY);
+        }
     }
 
     private void OnPairingRequested(object? sender, EventArgs e)

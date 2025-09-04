@@ -48,6 +48,7 @@ internal class UiConfig
 {
     public bool startup_run { get; set; }
     public bool swap_bindings { get; set; }
+    public bool enable_mouse_position_memory { get; set; }
 }
 
 internal class ImplementationConfig

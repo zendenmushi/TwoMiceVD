@@ -12,6 +12,7 @@ public partial class SettingsDialog : Form
     private TrackBar? _hysteresisTrackBar;
     private Label? _thresholdLabel;
     private Label? _hysteresisLabel;
+    private CheckBox? _enableMousePositionCheckBox;
     private Button? _okButton;
     private Button? _cancelButton;
 
@@ -25,7 +26,7 @@ public partial class SettingsDialog : Form
     private void InitializeComponent()
     {
         Text = "設定";
-        Size = new Size(400, 250);
+        Size = new Size(400, 300);
         StartPosition = FormStartPosition.CenterParent;
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
@@ -93,10 +94,19 @@ public partial class SettingsDialog : Form
         };
         Controls.Add(_hysteresisTrackBar);
 
+        _enableMousePositionCheckBox = new CheckBox
+        {
+            Text = "マウス位置記憶（マウス切り替え時に前の位置を記憶）",
+            Location = new Point(20, 180),
+            Size = new Size(350, 24),
+            UseVisualStyleBackColor = true
+        };
+        Controls.Add(_enableMousePositionCheckBox);
+
         _okButton = new Button
         {
             Text = "OK",
-            Location = new Point(220, 180),
+            Location = new Point(220, 230),
             Size = new Size(75, 25),
             DialogResult = DialogResult.OK
         };
@@ -106,7 +116,7 @@ public partial class SettingsDialog : Form
         _cancelButton = new Button
         {
             Text = "キャンセル",
-            Location = new Point(305, 180),
+            Location = new Point(305, 230),
             Size = new Size(75, 25),
             DialogResult = DialogResult.Cancel
         };
@@ -137,6 +147,11 @@ public partial class SettingsDialog : Form
         {
             _hysteresisLabel.Text = _config.HysteresisMs.ToString();
         }
+        
+        if (_enableMousePositionCheckBox != null)
+        {
+            _enableMousePositionCheckBox.Checked = _config.EnableMousePositionMemory;
+        }
     }
 
     private void SaveSettings()
@@ -149,6 +164,11 @@ public partial class SettingsDialog : Form
         if (_hysteresisTrackBar != null)
         {
             _config.HysteresisMs = _hysteresisTrackBar.Value;
+        }
+        
+        if (_enableMousePositionCheckBox != null)
+        {
+            _config.EnableMousePositionMemory = _enableMousePositionCheckBox.Checked;
         }
         
         _config.Save();

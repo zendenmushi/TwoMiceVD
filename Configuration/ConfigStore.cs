@@ -18,6 +18,7 @@ public class ConfigStore
     public bool PreferInternalApi { get; set; } = true;
     public bool StartupRun { get; set; } = false;
     public bool SwapBindings { get; set; } = false;
+    public bool EnableMousePositionMemory { get; set; } = false;
 
     public Dictionary<string, DeviceInfo> Devices { get; set; } = new Dictionary<string, DeviceInfo>();
     public Dictionary<string, string> Bindings { get; set; } = new Dictionary<string, string>();
@@ -124,7 +125,8 @@ public class ConfigStore
             ui = new UiConfig
             {
                 startup_run = StartupRun,
-                swap_bindings = SwapBindings
+                swap_bindings = SwapBindings,
+                enable_mouse_position_memory = EnableMousePositionMemory
             },
             impl = new ImplementationConfig
             {
@@ -157,6 +159,7 @@ public class ConfigStore
         {
             config.StartupRun = data.ui.startup_run;
             config.SwapBindings = data.ui.swap_bindings;
+            config.EnableMousePositionMemory = data.ui.enable_mouse_position_memory;
         }
         
         if (data?.impl != null)
