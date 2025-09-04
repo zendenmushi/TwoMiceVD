@@ -22,13 +22,13 @@ public class SwitchPolicy
         _config = config;
     }
 
-    public void HandleMovement(string deviceId, int dx, int dy)
+    public bool HandleMovement(string deviceId, int dx, int dy)
     {
         // ペアリング中は切り替えを無効化
-        if (IsPairing) return;
+        if (IsPairing) return false;
 
         int move = Math.Abs(dx) + Math.Abs(dy);
-        if (move <= 0) return;
+        if (move <= 0) return false;
 
         if (!_movementBuckets.ContainsKey(deviceId))
             _movementBuckets[deviceId] = 0;
@@ -37,7 +37,7 @@ public class SwitchPolicy
 
         TimeSpan sinceLast = DateTime.Now - _lastSwitchTime;
         if (sinceLast.TotalMilliseconds < _config.HysteresisMs)
-            return;
+            return false;
 
         if (_movementBuckets[deviceId] >= _config.ThresholdMovement)
         {
@@ -47,7 +47,10 @@ public class SwitchPolicy
                 _controller.SwitchTo(target);
                 _lastSwitchTime = DateTime.Now;
                 _movementBuckets.Clear();
+                return true;
             }
         }
+
+        return false;
     }
 }

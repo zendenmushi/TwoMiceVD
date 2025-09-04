@@ -134,9 +134,6 @@ public partial class PairingDialog : Form
             _config.SetDesktopBinding(device.Key, $"VD{(device.Key == "A" ? 0 : 1)}");
         }
         _config.Save();
-        
-        MessageBox.Show("マウスのペアリングが完了しました", "完了", 
-            MessageBoxButtons.OK, MessageBoxIcon.Information);
         Close();
     }
 

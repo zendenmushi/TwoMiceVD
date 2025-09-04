@@ -13,6 +13,9 @@ public partial class SettingsDialog : Form
     private Label? _thresholdLabel;
     private Label? _hysteresisLabel;
     private CheckBox? _enableMousePositionCheckBox;
+    private CheckBox? _exclusiveActiveCheckBox;
+    private TrackBar? _activeHoldTrackBar;
+    private Label? _activeHoldLabel;
     private Button? _okButton;
     private Button? _cancelButton;
 
@@ -26,7 +29,7 @@ public partial class SettingsDialog : Form
     private void InitializeComponent()
     {
         Text = "設定";
-        Size = new Size(400, 300);
+        Size = new Size(460, 440);
         StartPosition = FormStartPosition.CenterParent;
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
@@ -103,10 +106,50 @@ public partial class SettingsDialog : Form
         };
         Controls.Add(_enableMousePositionCheckBox);
 
+        _exclusiveActiveCheckBox = new CheckBox
+        {
+            Text = "アクティブマウス優先モード（操作中は他方を無視）",
+            Location = new Point(20, 210),
+            Size = new Size(370, 24),
+            UseVisualStyleBackColor = true
+        };
+        Controls.Add(_exclusiveActiveCheckBox);
+
+        var activeHoldTitleLabel = new Label
+        {
+            Text = "アクティブ猶予（ミリ秒）",
+            Location = new Point(20, 245),
+            Size = new Size(180, 20)
+        };
+        Controls.Add(activeHoldTitleLabel);
+
+        _activeHoldLabel = new Label
+        {
+            Location = new Point(300, 245),
+            Size = new Size(50, 20),
+            TextAlign = ContentAlignment.MiddleRight
+        };
+        Controls.Add(_activeHoldLabel);
+
+        _activeHoldTrackBar = new TrackBar
+        {
+            Location = new Point(20, 270),
+            Size = new Size(330, 45),
+            Minimum = 50,
+            Maximum = 1000,
+            TickFrequency = 50
+        };
+        _activeHoldTrackBar.ValueChanged += (s, e) =>
+        {
+            if (_activeHoldLabel != null && _activeHoldTrackBar != null)
+                _activeHoldLabel.Text = _activeHoldTrackBar.Value.ToString();
+        };
+        Controls.Add(_activeHoldTrackBar);
+
         _okButton = new Button
         {
             Text = "OK",
-            Location = new Point(220, 230),
+            Location = new Point(260, 360),
             Size = new Size(75, 25),
             DialogResult = DialogResult.OK
         };
@@ -116,7 +159,7 @@ public partial class SettingsDialog : Form
         _cancelButton = new Button
         {
             Text = "キャンセル",
-            Location = new Point(305, 230),
+            Location = new Point(345, 360),
             Size = new Size(75, 25),
             DialogResult = DialogResult.Cancel
         };
@@ -152,6 +195,21 @@ public partial class SettingsDialog : Form
         {
             _enableMousePositionCheckBox.Checked = _config.EnableMousePositionMemory;
         }
+
+        if (_exclusiveActiveCheckBox != null)
+        {
+            _exclusiveActiveCheckBox.Checked = _config.ExclusiveActiveMouse;
+        }
+
+        if (_activeHoldTrackBar != null)
+        {
+            _activeHoldTrackBar.Value = Math.Max(50, Math.Min(1000, _config.ActiveHoldMs));
+        }
+
+        if (_activeHoldLabel != null)
+        {
+            _activeHoldLabel.Text = _config.ActiveHoldMs.ToString();
+        }
     }
 
     private void SaveSettings()
@@ -170,7 +228,17 @@ public partial class SettingsDialog : Form
         {
             _config.EnableMousePositionMemory = _enableMousePositionCheckBox.Checked;
         }
-        
+
+        if (_exclusiveActiveCheckBox != null)
+        {
+            _config.ExclusiveActiveMouse = _exclusiveActiveCheckBox.Checked;
+        }
+
+        if (_activeHoldTrackBar != null)
+        {
+            _config.ActiveHoldMs = _activeHoldTrackBar.Value;
+        }
+
         _config.Save();
     }
 }

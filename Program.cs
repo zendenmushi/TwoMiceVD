@@ -15,6 +15,11 @@ internal class Program : ApplicationContext
     private readonly TrayUI? _tray;
     private readonly ConfigStore? _config;
     private readonly MousePositionManager? _mousePositionManager;
+    
+    // 直近で動いているマウス（アクティブ）の判定用
+    private string? _activeDeviceId;
+    private DateTime _activeUntil = DateTime.MinValue;
+    private int _activeHoldMs = 150; // 連続動作の猶予時間（設定連動）
 
     public Program()
     {
@@ -44,6 +49,9 @@ internal class Program : ApplicationContext
             
             // マウス位置管理の初期化
             _mousePositionManager = new MousePositionManager();
+
+            // アクティブ猶予時間を設定から反映
+            _activeHoldMs = Math.Max(50, Math.Min(1000, _config.ActiveHoldMs));
 
             // タスクトレイUIの初期化
             try
@@ -88,11 +96,35 @@ internal class Program : ApplicationContext
 
     private void OnDeviceMoved(object? sender, DeviceMovedEventArgs e)
     {
-        // 先に仮想デスクトップの切り替えを判定・実行
-        // （マウス位置の復元を最後にすることで上書きを防ぐ）
+        // 排他モードが有効な場合のみアクティブマウス制御を適用
+        if (_config?.ExclusiveActiveMouse == true)
+        {
+            var now = DateTime.Now;
+            int holdMs = Math.Max(50, Math.Min(1000, _config.ActiveHoldMs));
+            bool activeValid = _activeDeviceId != null && now < _activeUntil;
+            bool isSameAsActive = _activeDeviceId == e.DeviceId;
+
+            if (!activeValid)
+            {
+                // アクティブ期限切れ → 現在のデバイスを新たにアクティブに
+                _activeDeviceId = e.DeviceId;
+                _activeUntil = now.AddMilliseconds(holdMs);
+            }
+            else if (!isSameAsActive)
+            {
+                // 他デバイスの入力は無視（保存も切替も行わない）
+                return;
+            }
+            else
+            {
+                // 同じアクティブデバイス → 猶予延長
+                _activeUntil = now.AddMilliseconds(holdMs);
+            }
+        }
+
+        // ここに来るのは「アクティブなマウス」からの入力のみ
         _policy?.HandleMovement(e.DeviceId, e.DeltaX, e.DeltaY);
 
-        // 設定が有効な場合のみマウス位置管理を実行
         if (_config?.EnableMousePositionMemory == true)
         {
             _mousePositionManager?.UpdateDevicePosition(e.DeviceId, e.DeltaX, e.DeltaY);

@@ -31,6 +31,7 @@ public class MousePositionManager
             // 現在のカーソル位置を取得
             if (!GetCursorPos(out POINT currentPoint)) return;
 
+
             // デバイス切り替えを検知
             bool deviceChanged = _lastActiveDevice != null && _lastActiveDevice != deviceId;
 
@@ -79,6 +80,9 @@ public class MousePositionManager
             // エラーは握り潰して安定性優先
         }
     }
+
+    // 本クラスでは抑制や打ち消しは行わず、
+    // Program 側でイベントの採否を判定する（単一カーソル前提）
 
     /// <summary>
     /// 指定されたデバイスの保存位置にカーソルを復元する

@@ -49,6 +49,9 @@ internal class UiConfig
     public bool startup_run { get; set; }
     public bool swap_bindings { get; set; }
     public bool enable_mouse_position_memory { get; set; }
+    // 新規項目は後方互換のため nullable で定義
+    public bool? exclusive_active_mouse { get; set; }
+    public int? active_hold_ms { get; set; }
 }
 
 internal class ImplementationConfig

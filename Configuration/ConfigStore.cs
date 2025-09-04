@@ -18,7 +18,9 @@ public class ConfigStore
     public bool PreferInternalApi { get; set; } = true;
     public bool StartupRun { get; set; } = false;
     public bool SwapBindings { get; set; } = false;
-    public bool EnableMousePositionMemory { get; set; } = false;
+    public bool EnableMousePositionMemory { get; set; } = true;
+    public bool ExclusiveActiveMouse { get; set; } = true;
+    public int ActiveHoldMs { get; set; } = 150;
 
     public Dictionary<string, DeviceInfo> Devices { get; set; } = new Dictionary<string, DeviceInfo>();
     public Dictionary<string, string> Bindings { get; set; } = new Dictionary<string, string>();
@@ -126,7 +128,9 @@ public class ConfigStore
             {
                 startup_run = StartupRun,
                 swap_bindings = SwapBindings,
-                enable_mouse_position_memory = EnableMousePositionMemory
+                enable_mouse_position_memory = EnableMousePositionMemory,
+                exclusive_active_mouse = ExclusiveActiveMouse,
+                active_hold_ms = ActiveHoldMs
             },
             impl = new ImplementationConfig
             {
@@ -160,6 +164,11 @@ public class ConfigStore
             config.StartupRun = data.ui.startup_run;
             config.SwapBindings = data.ui.swap_bindings;
             config.EnableMousePositionMemory = data.ui.enable_mouse_position_memory;
+            // 既存の設定ファイルにキーが無い場合は既定値を維持
+            if (data.ui.exclusive_active_mouse.HasValue)
+                config.ExclusiveActiveMouse = data.ui.exclusive_active_mouse.Value;
+            if (data.ui.active_hold_ms.HasValue)
+                config.ActiveHoldMs = data.ui.active_hold_ms.Value;
         }
         
         if (data?.impl != null)
