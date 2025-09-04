@@ -28,3 +28,9 @@ internal enum RawMouseFlags : ushort
     MOUSE_VIRTUAL_DESKTOP = 0x02,
     MOUSE_ATTRIBUTES_CHANGED = 0x04
 }
+
+// GetRawInputDeviceInfo で使用するコマンド
+internal enum RawInputDeviceInfoCommand : uint
+{
+    RIDI_DEVICENAME = 0x20000007,
+}

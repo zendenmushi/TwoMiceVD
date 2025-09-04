@@ -34,9 +34,6 @@ public class VirtualDesktopController
         {
             if (targetIndex == _currentDesktopIndex) return;
 
-            // 現在のマウス位置を保存
-            SaveCurrentCursorPosition();
-
             if (targetIndex == 0)
             {
                 SendDesktopLeftShortcut(); // デスクトップ1へ切り替え
@@ -47,10 +44,6 @@ public class VirtualDesktopController
             }
 
             _currentDesktopIndex = targetIndex;
-            
-            // 少し待機してからマウス位置を復元（デスクトップ切り替えの完了を待つ）
-            System.Threading.Thread.Sleep(100);
-            RestoreCursorPosition(targetIndex);
         }
     }
 

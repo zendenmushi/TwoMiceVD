@@ -14,6 +14,7 @@ internal class Program : ApplicationContext
     private readonly SwitchPolicy? _policy;
     private readonly TrayUI? _tray;
     private readonly ConfigStore? _config;
+    private readonly MousePositionManager? _mousePositionManager;
 
     public Program()
     {
@@ -40,6 +41,9 @@ internal class Program : ApplicationContext
             
             // ポリシーエンジンの初期化
             _policy = new SwitchPolicy(_vdController, _config);
+            
+            // マウス位置管理の初期化
+            _mousePositionManager = new MousePositionManager();
 
             // タスクトレイUIの初期化
             try
@@ -84,7 +88,12 @@ internal class Program : ApplicationContext
 
     private void OnDeviceMoved(object? sender, DeviceMovedEventArgs e)
     {
+        // 先に仮想デスクトップの切り替えを判定・実行
+        // （マウス位置の復元を最後にすることで上書きを防ぐ）
         _policy?.HandleMovement(e.DeviceId, e.DeltaX, e.DeltaY);
+
+        // マウス位置を継続的に更新（切り替え検知も内部で行う）
+        _mousePositionManager?.UpdateDevicePosition(e.DeviceId, e.DeltaX, e.DeltaY);
     }
 
     private void OnPairingRequested(object? sender, EventArgs e)

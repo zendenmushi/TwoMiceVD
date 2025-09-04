@@ -16,4 +16,10 @@ internal static class NativeMethods
 
     [DllImport("user32.dll")]
     internal static extern bool SetCursorPos(int X, int Y);
+
+    // 端末名（デバイスパス）取得用
+    internal const uint RIDI_DEVICENAME = 0x20000007;
+
+    [DllImport("User32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+    internal static extern uint GetRawInputDeviceInfo(IntPtr hDevice, uint uiCommand, IntPtr pData, ref uint pcbSize);
 }

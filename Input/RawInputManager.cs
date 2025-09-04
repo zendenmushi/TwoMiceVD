@@ -83,7 +83,37 @@ public class RawInputManager : IDisposable
 
     private string GetDeviceId(IntPtr hDevice)
     {
-        // ハンドル値をそのまま使用して文字化け問題を回避
+        // 安定したデバイス識別子として、Raw Input のデバイス名（パス）を取得
+        try
+        {
+            uint size = 0;
+            // まず必要サイズを取得（戻り値は文字数）
+            GetRawInputDeviceInfo(hDevice, (uint)RawInputDeviceInfoCommand.RIDI_DEVICENAME, IntPtr.Zero, ref size);
+            if (size > 0)
+            {
+                // Unicode 文字数をバイト数に換算して領域確保
+                IntPtr buffer = Marshal.AllocHGlobal((int)size * 2);
+                try
+                {
+                    uint result = GetRawInputDeviceInfo(hDevice, (uint)RawInputDeviceInfoCommand.RIDI_DEVICENAME, buffer, ref size);
+                    if (result > 0)
+                    {
+                        string? name = Marshal.PtrToStringUni(buffer);
+                        if (!string.IsNullOrEmpty(name))
+                        {
+                            return name;
+                        }
+                    }
+                }
+                finally
+                {
+                    Marshal.FreeHGlobal(buffer);
+                }
+            }
+        }
+        catch { /* 失敗時はフォールバック */ }
+
+        // フォールバック：ハンドル由来（セッション間で不安定）
         return $"Device_{hDevice.ToInt64():X}";
     }
 
