@@ -6,7 +6,13 @@
     <Nullable>enable</Nullable>
     <UseWindowsForms>true</UseWindowsForms>
     <ImplicitUsings>enable</ImplicitUsings>
+    <ApplicationIcon>Resource\icon_transparent.ico</ApplicationIcon>
   </PropertyGroup>
+
+  <ItemGroup>
+    <Content Include="Resource\icon_transparent.ico" />
+  </ItemGroup>
+
 
   <ItemGroup>
     <PackageReference Include="InputSimulator" Version="1.0.4" />

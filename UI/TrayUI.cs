@@ -28,7 +28,7 @@ public class TrayUI : IDisposable
         _icon = new NotifyIcon
         {
             Text = "TwoMiceVD - 2マウス仮想デスクトップ切替",
-            Icon = SystemIcons.Application,
+            Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath),
             Visible = true,
             ContextMenuStrip = _menu
         };
