@@ -1,8 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Threading.Tasks;
 using System.Windows.Forms;
 using Newtonsoft.Json;
+using TwoMiceVD.Core;
 
 namespace TwoMiceVD.Configuration;
 
@@ -177,5 +179,72 @@ public class ConfigStore
         }
         
         return config;
+    }
+
+    /// <summary>
+    /// 保存されたGUIDの有効性を検証
+    /// </summary>
+    public async Task<GuidValidationResult> ValidateStoredGuidsAsync(VirtualDesktopController vdController)
+    {
+        if (VirtualDesktops.Mode != "GUID")
+        {
+            return new GuidValidationResult
+            {
+                IsValid = false,
+                Message = "GUID モードではありません。"
+            };
+        }
+
+        if (!VirtualDesktops.Ids.TryGetValue("VD0", out string? vd0String) ||
+            !VirtualDesktops.Ids.TryGetValue("VD1", out string? vd1String))
+        {
+            return new GuidValidationResult
+            {
+                IsValid = false,
+                Message = "VD0 または VD1 の GUID が保存されていません。"
+            };
+        }
+
+        if (!Guid.TryParse(vd0String, out Guid vd0Guid) ||
+            !Guid.TryParse(vd1String, out Guid vd1Guid))
+        {
+            return new GuidValidationResult
+            {
+                IsValid = false,
+                Message = "保存された GUID の形式が正しくありません。"
+            };
+        }
+
+        // COM インターフェースを使用して GUID の存在を確認
+        bool isValid = await vdController.ValidateStoredGuidsAsync(vd0Guid, vd1Guid);
+        
+        return new GuidValidationResult
+        {
+            IsValid = isValid,
+            Message = isValid 
+                ? "保存された仮想デスクトップ GUID は有効です。"
+                : "保存された仮想デスクトップが見つかりません。Windows更新やデスクトップ削除により無効になった可能性があります。ペアリングをやり直してください。",
+            VD0Guid = vd0Guid,
+            VD1Guid = vd1Guid
+        };
+    }
+
+    /// <summary>
+    /// GUID を手動で設定する
+    /// </summary>
+    public void SaveDesktopGuids(Guid vd0Guid, Guid vd1Guid)
+    {
+        VirtualDesktops.Mode = "GUID";
+        VirtualDesktops.Ids["VD0"] = vd0Guid.ToString();
+        VirtualDesktops.Ids["VD1"] = vd1Guid.ToString();
+        Save();
+    }
+
+    public class GuidValidationResult
+    {
+        public bool IsValid { get; set; }
+        public string Message { get; set; } = string.Empty;
+        public Guid VD0Guid { get; set; }
+        public Guid VD1Guid { get; set; }
     }
 }

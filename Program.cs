@@ -1,4 +1,5 @@
 using System;
+using System.Threading.Tasks;
 using System.Windows.Forms;
 using TwoMiceVD.Core;
 using TwoMiceVD.Input;
@@ -58,7 +59,7 @@ internal class Program : ApplicationContext
             // タスクトレイUIの初期化
             try
             {
-                _tray = new TrayUI(_config, _rawInput, _policy);
+                _tray = new TrayUI(_config, _rawInput, _policy, _vdController);
             }
             catch (Exception ex)
             {
@@ -77,12 +78,52 @@ internal class Program : ApplicationContext
 
             // 初期化完了通知
             _tray?.ShowNotification("TwoMiceVD が開始されました", ToolTipIcon.Info);
+            
+            // 起動時のGUID検証を非同期で実行
+            _ = Task.Run(async () => await ValidateStartupGuidsAsync());
         }
         catch (Exception ex)
         {
             MessageBox.Show($"アプリケーションの初期化に失敗しました: {ex.Message}", "致命的エラー",
                             MessageBoxButtons.OK, MessageBoxIcon.Error);
             Environment.Exit(1);
+        }
+    }
+
+    /// <summary>
+    /// 起動時の保存されたGUID検証
+    /// </summary>
+    private async Task ValidateStartupGuidsAsync()
+    {
+        try
+        {
+            // アプリケーションの完全な初期化を待つ
+            await Task.Delay(1000);
+            
+            if (_config == null || _vdController == null || _tray == null)
+                return;
+
+            var validationResult = await _config.ValidateStoredGuidsAsync(_vdController);
+            
+            if (!validationResult.IsValid && _config.VirtualDesktops.Mode == "GUID")
+            {
+                // バルーン通知でメッセージを表示
+                _tray.ShowNotification(
+                    validationResult.Message,
+                    ToolTipIcon.Warning
+                );
+            }
+        }
+        catch (Exception ex)
+        {
+            // 検証エラーは致命的ではないため、ログ出力程度に留める
+            if (_tray != null)
+            {
+                _tray.ShowNotification(
+                    $"GUID検証中にエラーが発生しました: {ex.Message}",
+                    ToolTipIcon.Warning
+                );
+            }
         }
     }
 
