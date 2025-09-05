@@ -28,24 +28,24 @@ internal struct RAWINPUT
     public RAWMOUSE data;
 }
 
-[StructLayout(LayoutKind.Explicit)]
+// Correct RAWMOUSE layout with explicit union for button fields
+[StructLayout(LayoutKind.Sequential)]
 internal struct RAWMOUSE
 {
-    [FieldOffset(0)]
-    public MOUSE mouse;
-}
-
-[StructLayout(LayoutKind.Sequential)]
-internal struct MOUSE
-{
     public RawMouseFlags usFlags;
-    public uint ulButtons;
-    public ushort usButtonFlags;
-    public ushort usButtonData;
+    public RAWMOUSE_BUTTONS Buttons; // union of ulButtons / (usButtonFlags, usButtonData)
     public uint ulRawButtons;
     public int lLastX;
     public int lLastY;
     public uint ulExtraInformation;
+}
+
+[StructLayout(LayoutKind.Explicit)]
+internal struct RAWMOUSE_BUTTONS
+{
+    [FieldOffset(0)] public uint ulButtons;
+    [FieldOffset(0)] public ushort usButtonFlags;
+    [FieldOffset(2)] public ushort usButtonData;
 }
 
 [StructLayout(LayoutKind.Sequential)]

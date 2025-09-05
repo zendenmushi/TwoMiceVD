@@ -65,12 +65,27 @@ public class RawInputManager : IDisposable
                 if (rawInput.header.dwType == RawInputType.RIM_TYPEMOUSE)
                 {
                     string deviceId = GetDeviceId(rawInput.header.hDevice);
-                    int deltaX = rawInput.data.mouse.lLastX;
-                    int deltaY = rawInput.data.mouse.lLastY;
+                    int deltaX = rawInput.data.lLastX;
+                    int deltaY = rawInput.data.lLastY;
 
-                    if (deltaX != 0 || deltaY != 0)
+                    // Button/wheel flags (from union)
+                    var btnFlags = (RawMouseButtonFlags)rawInput.data.Buttons.usButtonFlags;
+
+                    // Extract wheel deltas when present (signed short in usButtonData)
+                    short wheelDelta = 0;
+                    short hWheelDelta = 0;
+                    if ((btnFlags & RawMouseButtonFlags.RI_MOUSE_WHEEL) != 0)
+                        wheelDelta = unchecked((short)rawInput.data.Buttons.usButtonData);
+                    if ((btnFlags & RawMouseButtonFlags.RI_MOUSE_HWHEEL) != 0)
+                        hWheelDelta = unchecked((short)rawInput.data.Buttons.usButtonData);
+
+                    // Treat button clicks and wheel rotations as activity (even without movement)
+                    bool hasButtonOrWheel = btnFlags != 0;
+
+                    if (deltaX != 0 || deltaY != 0 || hasButtonOrWheel)
                     {
-                        DeviceMoved?.Invoke(this, new DeviceMovedEventArgs(deviceId, deltaX, deltaY));
+                        DeviceMoved?.Invoke(this,
+                            new DeviceMovedEventArgs(deviceId, deltaX, deltaY, btnFlags, wheelDelta, hWheelDelta));
                     }
                 }
             }

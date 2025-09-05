@@ -4,6 +4,7 @@ using TwoMiceVD.Core;
 using TwoMiceVD.Input;
 using TwoMiceVD.UI;
 using TwoMiceVD.Configuration;
+using TwoMiceVD.Interop;
 
 namespace TwoMiceVD;
 
@@ -15,6 +16,7 @@ internal class Program : ApplicationContext
     private readonly TrayUI? _tray;
     private readonly ConfigStore? _config;
     private readonly MousePositionManager? _mousePositionManager;
+    private readonly System.Collections.Generic.Dictionary<string, int> _buttonsDownCountByDevice = new();
     
     // 直近で動いているマウス（アクティブ）の判定用
     private string? _activeDeviceId;
@@ -96,29 +98,68 @@ internal class Program : ApplicationContext
 
     private void OnDeviceMoved(object? sender, DeviceMovedEventArgs e)
     {
+        // Track button press state per device for drag/hold locking
+        if (e.ButtonFlags != 0)
+        {
+            int deltaDown = 0;
+            int deltaUp = 0;
+
+            if (e.ButtonFlags.HasFlag(RawMouseButtonFlags.RI_MOUSE_LEFT_BUTTON_DOWN)) deltaDown++;
+            if (e.ButtonFlags.HasFlag(RawMouseButtonFlags.RI_MOUSE_RIGHT_BUTTON_DOWN)) deltaDown++;
+            if (e.ButtonFlags.HasFlag(RawMouseButtonFlags.RI_MOUSE_MIDDLE_BUTTON_DOWN)) deltaDown++;
+            if (e.ButtonFlags.HasFlag(RawMouseButtonFlags.RI_MOUSE_BUTTON_4_DOWN)) deltaDown++;
+            if (e.ButtonFlags.HasFlag(RawMouseButtonFlags.RI_MOUSE_BUTTON_5_DOWN)) deltaDown++;
+
+            if (e.ButtonFlags.HasFlag(RawMouseButtonFlags.RI_MOUSE_LEFT_BUTTON_UP)) deltaUp++;
+            if (e.ButtonFlags.HasFlag(RawMouseButtonFlags.RI_MOUSE_RIGHT_BUTTON_UP)) deltaUp++;
+            if (e.ButtonFlags.HasFlag(RawMouseButtonFlags.RI_MOUSE_MIDDLE_BUTTON_UP)) deltaUp++;
+            if (e.ButtonFlags.HasFlag(RawMouseButtonFlags.RI_MOUSE_BUTTON_4_UP)) deltaUp++;
+            if (e.ButtonFlags.HasFlag(RawMouseButtonFlags.RI_MOUSE_BUTTON_5_UP)) deltaUp++;
+
+            if (deltaDown != 0 || deltaUp != 0)
+            {
+                int current = 0;
+                _buttonsDownCountByDevice.TryGetValue(e.DeviceId, out current);
+                current = Math.Max(0, current + deltaDown - deltaUp);
+                _buttonsDownCountByDevice[e.DeviceId] = current;
+            }
+        }
+
         // 排他モードが有効な場合のみアクティブマウス制御を適用
         if (_config?.ExclusiveActiveMouse == true)
         {
             var now = DateTime.Now;
             int holdMs = Math.Max(50, Math.Min(1000, _config.ActiveHoldMs));
-            bool activeValid = _activeDeviceId != null && now < _activeUntil;
             bool isSameAsActive = _activeDeviceId == e.DeviceId;
+            bool activeButtonsHeld = _activeDeviceId != null &&
+                                     _buttonsDownCountByDevice.TryGetValue(_activeDeviceId, out var cnt) && cnt > 0;
+            bool activeValidTime = _activeDeviceId != null && now < _activeUntil;
+            bool lockToActive = activeButtonsHeld || activeValidTime;
 
-            if (!activeValid)
+            if (_activeDeviceId == null)
             {
-                // アクティブ期限切れ → 現在のデバイスを新たにアクティブに
                 _activeDeviceId = e.DeviceId;
                 _activeUntil = now.AddMilliseconds(holdMs);
             }
-            else if (!isSameAsActive)
-            {
-                // 他デバイスの入力は無視（保存も切替も行わない）
-                return;
-            }
-            else
+            else if (isSameAsActive)
             {
                 // 同じアクティブデバイス → 猶予延長
                 _activeUntil = now.AddMilliseconds(holdMs);
+            }
+            else
+            {
+                // 他デバイスの入力
+                if (lockToActive)
+                {
+                    // ボタンが押下されたまま、または猶予内 → 無視
+                    return;
+                }
+                else
+                {
+                    // ロックが無い → アクティブ切替
+                    _activeDeviceId = e.DeviceId;
+                    _activeUntil = now.AddMilliseconds(holdMs);
+                }
             }
         }
 
