@@ -1,4 +1,5 @@
-# TwoMiceVD
+# ![icon](./Resource/32x32.png) TwoMiceVD
+
 
 2台の物理マウスで仮想デスクトップを自動切り替えするWindows 11アプリケーション
 
