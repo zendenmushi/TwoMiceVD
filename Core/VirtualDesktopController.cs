@@ -135,6 +135,93 @@ public class VirtualDesktopController : IDisposable
     }
 
     /// <summary>
+    /// 新しい仮想デスクトップを作成してGUIDを取得する
+    /// </summary>
+    public async Task<(Guid vd0, Guid vd1)?> CreateDesktopAsync()
+    {
+        System.Diagnostics.Debug.WriteLine("[TwoMiceVD] 新しい仮想デスクトップを作成中...");
+        
+        // メインデスクトップのGUIDを先に取得
+        var vd0Guid = await GetCurrentDesktopGuidAsync();
+        if (vd0Guid == null)
+        {
+            System.Diagnostics.Debug.WriteLine("[TwoMiceVD] メインデスクトップのGUID取得に失敗");
+            return null;
+        }
+        
+        // Win+Ctrl+D で新しいデスクトップを作成
+        _inputSimulator.Keyboard.ModifiedKeyStroke(
+            new[] { VirtualKeyCode.LWIN, VirtualKeyCode.CONTROL },
+            VirtualKeyCode.VK_D
+        );
+        
+        // 作成完了を待機（アニメーションとデスクトップ初期化）
+        await Task.Delay(800);
+        
+        // 新しく作成されたデスクトップのGUIDを取得
+        var vd1Guid = await GetCurrentDesktopGuidAsync();
+        if (vd1Guid == null)
+        {
+            System.Diagnostics.Debug.WriteLine("[TwoMiceVD] 新しいデスクトップのGUID取得に失敗");
+            // メインに戻る
+            SendDesktopLeftShortcut();
+            await Task.Delay(250);
+            return null;
+        }
+        
+        // メイン（左端）デスクトップに戻る
+        System.Diagnostics.Debug.WriteLine("[TwoMiceVD] メインデスクトップに戻る...");
+        SendDesktopLeftShortcut();
+        
+        // 移動アニメーション完了を待機
+        await Task.Delay(250);
+        
+        System.Diagnostics.Debug.WriteLine($"[TwoMiceVD] 仮想デスクトップ作成完了: VD0={vd0Guid}, VD1={vd1Guid}");
+        return (vd0Guid.Value, vd1Guid.Value);
+    }
+
+    /// <summary>
+    /// 仮想デスクトップのGUIDを簡易的に取得する（検証なし）
+    /// </summary>
+    public async Task<(Guid vd0, Guid vd1)?> GetDesktopGuidsAsync()
+    {
+        if (_vdManager?.IsAvailable != true)
+            return null;
+
+        System.Diagnostics.Debug.WriteLine("[TwoMiceVD] 仮想デスクトップGUIDを取得中...");
+
+        // メインデスクトップのGUIDを取得
+        var vd0Guid = await GetCurrentDesktopGuidAsync();
+        if (vd0Guid == null)
+        {
+            System.Diagnostics.Debug.WriteLine("[TwoMiceVD] VD0 GUIDの取得に失敗");
+            return null;
+        }
+
+        // 右のデスクトップに移動してGUID取得
+        SendDesktopRightShortcut();
+        await Task.Delay(250);
+        
+        var vd1Guid = await GetCurrentDesktopGuidAsync();
+        if (vd1Guid == null)
+        {
+            System.Diagnostics.Debug.WriteLine("[TwoMiceVD] VD1 GUIDの取得に失敗");
+            
+            // メインに戻してからnullを返す
+            SendDesktopLeftShortcut();
+            await Task.Delay(250);
+            return null;
+        }
+
+        // メインに戻る
+        SendDesktopLeftShortcut();
+        await Task.Delay(250);
+
+        System.Diagnostics.Debug.WriteLine($"[TwoMiceVD] GUID取得完了: VD0={vd0Guid}, VD1={vd1Guid}");
+        return (vd0Guid.Value, vd1Guid.Value);
+    }
+
+    /// <summary>
     /// 現在のマウス位置を保存する
     /// </summary>
     private void SaveCurrentCursorPosition()
@@ -203,6 +290,7 @@ public class VirtualDesktopController : IDisposable
             return new DesktopValidationResult
             {
                 IsValid = false,
+                ErrorType = DesktopValidationErrorType.ComInterfaceUnavailable,
                 ErrorMessage = "仮想デスクトップCOMインターフェースが利用できません。SendInputモードで動作します。"
             };
         }
@@ -216,6 +304,7 @@ public class VirtualDesktopController : IDisposable
                 return new DesktopValidationResult
                 {
                     IsValid = false,
+                    ErrorType = DesktopValidationErrorType.GuidRetrievalFailed,
                     ErrorMessage = "現在のデスクトップGUIDを取得できませんでした。"
                 };
             }
@@ -234,6 +323,7 @@ public class VirtualDesktopController : IDisposable
                 return new DesktopValidationResult
                 {
                     IsValid = false,
+                    ErrorType = DesktopValidationErrorType.NotOnMainDesktop,
                     ErrorMessage = "ペアリングはメイン（左端）のデスクトップで開始してください。メインへ切り替えてから再度お試しください。"
                 };
             }
@@ -248,6 +338,7 @@ public class VirtualDesktopController : IDisposable
                 return new DesktopValidationResult
                 {
                     IsValid = false,
+                    ErrorType = DesktopValidationErrorType.NotEnoughDesktops,
                     ErrorMessage = "仮想デスクトップが1枚です。新しいデスクトップを作成してから再度ペアリングしてください。"
                 };
             }
@@ -265,6 +356,7 @@ public class VirtualDesktopController : IDisposable
                 return new DesktopValidationResult
                 {
                     IsValid = false,
+                    ErrorType = DesktopValidationErrorType.TooManyDesktops,
                     ErrorMessage = "仮想デスクトップが3枚以上あります。本アプリは2枚までを想定しています。メインへ戻して構成を見直してから再度お試しください。"
                 };
             }
@@ -275,6 +367,7 @@ public class VirtualDesktopController : IDisposable
             return new DesktopValidationResult
             {
                 IsValid = true,
+                ErrorType = DesktopValidationErrorType.None,
                 VD0Guid = baseGuid.Value,
                 VD1Guid = right1Guid.Value
             };
@@ -284,6 +377,7 @@ public class VirtualDesktopController : IDisposable
             return new DesktopValidationResult
             {
                 IsValid = false,
+                ErrorType = DesktopValidationErrorType.GuidRetrievalFailed,
                 ErrorMessage = $"デスクトップ構成の検証中にエラーが発生しました: {ex.Message}"
             };
         }
@@ -390,9 +484,20 @@ public class VirtualDesktopController : IDisposable
         }
     }
 
+    public enum DesktopValidationErrorType
+    {
+        None,                  // エラーなし（成功）
+        NotEnoughDesktops,     // デスクトップが1枚（不足）
+        TooManyDesktops,       // デスクトップが3枚以上（過多）
+        NotOnMainDesktop,      // メイン（左端）デスクトップにいない
+        ComInterfaceUnavailable, // COMインターフェースが利用できない
+        GuidRetrievalFailed    // GUID取得に失敗
+    }
+
     public class DesktopValidationResult
     {
         public bool IsValid { get; set; }
+        public DesktopValidationErrorType ErrorType { get; set; } = DesktopValidationErrorType.None;
         public string? ErrorMessage { get; set; }
         public Guid VD0Guid { get; set; }
         public Guid VD1Guid { get; set; }

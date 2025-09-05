@@ -130,14 +130,73 @@ public class TrayUI : IDisposable
             
             if (!validationResult.IsValid)
             {
-                // 検証失敗時はエラーメッセージを表示してペアリングを中止
-                MessageBox.Show(
-                    validationResult.ErrorMessage ?? "仮想デスクトップ構成に問題があります。",
-                    "ペアリング開始エラー",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Warning
-                );
-                return;
+                // エラータイプによって処理を分岐
+                if (validationResult.ErrorType == VirtualDesktopController.DesktopValidationErrorType.NotEnoughDesktops)
+                {
+                    // デスクトップが1枚の場合：作成を提案
+                    var result = MessageBox.Show(
+                        "仮想デスクトップが1枚しかありません。\n\n" +
+                        "新しいデスクトップを自動作成してペアリングを続行しますか？\n" +
+                        "（Win+Ctrl+D ホットキーを送信して作成します）",
+                        "仮想デスクトップの作成",
+                        MessageBoxButtons.YesNo,
+                        MessageBoxIcon.Question
+                    );
+
+                    if (result == DialogResult.Yes)
+                    {
+                        try
+                        {
+                            // 新しいデスクトップを作成してGUIDも取得
+                            var guids = await _vdController.CreateDesktopAsync();
+                            if (guids == null)
+                            {
+                                MessageBox.Show(
+                                    "デスクトップ作成またはGUID取得に失敗しました。",
+                                    "エラー",
+                                    MessageBoxButtons.OK,
+                                    MessageBoxIcon.Error
+                                );
+                                return;
+                            }
+                            
+                            // 検証結果を手動で構築（検証成功として扱う）
+                            validationResult = new VirtualDesktopController.DesktopValidationResult
+                            {
+                                IsValid = true,
+                                ErrorType = VirtualDesktopController.DesktopValidationErrorType.None,
+                                VD0Guid = guids.Value.vd0,
+                                VD1Guid = guids.Value.vd1
+                            };
+                        }
+                        catch (Exception createEx)
+                        {
+                            MessageBox.Show(
+                                $"デスクトップ作成中にエラーが発生しました:\n{createEx.Message}",
+                                "作成エラー",
+                                MessageBoxButtons.OK,
+                                MessageBoxIcon.Error
+                            );
+                            return;
+                        }
+                    }
+                    else
+                    {
+                        // ユーザーがキャンセルした場合はペアリングを中止
+                        return;
+                    }
+                }
+                else
+                {
+                    // その他のエラーの場合：従来通りエラーメッセージを表示
+                    MessageBox.Show(
+                        validationResult.ErrorMessage ?? "仮想デスクトップ構成に問題があります。",
+                        "ペアリング開始エラー",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Warning
+                    );
+                    return;
+                }
             }
             
             // 検証成功時：GUIDを設定に保存
