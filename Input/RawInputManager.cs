@@ -11,15 +11,16 @@ namespace TwoMiceVD.Input;
 
 public class RawInputManager : IDisposable
 {
-    private const int WM_INPUT = 0x00FF;
     private readonly HiddenForm? _hiddenForm;
 
     public event EventHandler<DeviceMovedEventArgs>? DeviceMoved;
+    public event EventHandler<DeviceConnectionChangedEventArgs>? DeviceConnectionChanged;
 
     public RawInputManager()
     {
         _hiddenForm = new HiddenForm();
         _hiddenForm.RawInputReceived += OnRawInputReceived;
+        _hiddenForm.DeviceChangeReceived += OnRawInputDeviceChangeReceived;
         
         // フォームのハンドル作成を明示的に実行
         _hiddenForm.Initialize();
@@ -33,12 +34,56 @@ public class RawInputManager : IDisposable
         RegisterRawInput();
     }
 
+    /// <summary>
+    /// 現在接続中のマウスデバイス（Raw Input）のデバイスパス一覧を取得
+    /// </summary>
+    public string[] GetCurrentlyConnectedMouseDevicePaths()
+    {
+        try
+        {
+            uint count = 0;
+            uint cb = (uint)Marshal.SizeOf<RAWINPUTDEVICELIST>();
+            // 1st call to get count
+            GetRawInputDeviceList(IntPtr.Zero, ref count, cb);
+            if (count == 0) return Array.Empty<string>();
+
+            IntPtr pList = Marshal.AllocHGlobal((int)(count * cb));
+            try
+            {
+                uint ret = GetRawInputDeviceList(pList, ref count, cb);
+                if (ret == uint.MaxValue || ret == 0) return Array.Empty<string>();
+
+                var result = new System.Collections.Generic.List<string>();
+                for (int i = 0; i < ret; i++)
+                {
+                    IntPtr pItem = IntPtr.Add(pList, i * (int)cb);
+                    var item = Marshal.PtrToStructure<RAWINPUTDEVICELIST>(pItem);
+                    if (item.dwType == RawInputType.RIM_TYPEMOUSE)
+                    {
+                        string id = GetDeviceId(item.hDevice);
+                        if (!string.IsNullOrWhiteSpace(id))
+                            result.Add(id);
+                    }
+                }
+                return result.ToArray();
+            }
+            finally
+            {
+                Marshal.FreeHGlobal(pList);
+            }
+        }
+        catch
+        {
+            return Array.Empty<string>();
+        }
+    }
+
     private void RegisterRawInput()
     {
         RAWINPUTDEVICE[] rid = new RAWINPUTDEVICE[1];
         rid[0].usUsagePage = 0x01;
         rid[0].usUsage = 0x02; // マウス
-        rid[0].dwFlags = RawInputDeviceFlags.INPUTSINK;
+        rid[0].dwFlags = RawInputDeviceFlags.INPUTSINK | RawInputDeviceFlags.DEVNOTIFY;
         rid[0].hwndTarget = _hiddenForm!.Handle;
         if (!RegisterRawInputDevices(rid, (uint)rid.Length, (uint)Marshal.SizeOf<RAWINPUTDEVICE>()))
         {
@@ -65,12 +110,27 @@ public class RawInputManager : IDisposable
                 if (rawInput.header.dwType == RawInputType.RIM_TYPEMOUSE)
                 {
                     string deviceId = GetDeviceId(rawInput.header.hDevice);
-                    int deltaX = rawInput.data.mouse.lLastX;
-                    int deltaY = rawInput.data.mouse.lLastY;
+                    int deltaX = rawInput.data.lLastX;
+                    int deltaY = rawInput.data.lLastY;
 
-                    if (deltaX != 0 || deltaY != 0)
+                    // Button/wheel flags (from union)
+                    var btnFlags = (RawMouseButtonFlags)rawInput.data.Buttons.usButtonFlags;
+
+                    // Extract wheel deltas when present (signed short in usButtonData)
+                    short wheelDelta = 0;
+                    short hWheelDelta = 0;
+                    if ((btnFlags & RawMouseButtonFlags.RI_MOUSE_WHEEL) != 0)
+                        wheelDelta = unchecked((short)rawInput.data.Buttons.usButtonData);
+                    if ((btnFlags & RawMouseButtonFlags.RI_MOUSE_HWHEEL) != 0)
+                        hWheelDelta = unchecked((short)rawInput.data.Buttons.usButtonData);
+
+                    // Treat button clicks and wheel rotations as activity (even without movement)
+                    bool hasButtonOrWheel = btnFlags != 0;
+
+                    if (deltaX != 0 || deltaY != 0 || hasButtonOrWheel)
                     {
-                        DeviceMoved?.Invoke(this, new DeviceMovedEventArgs(deviceId, deltaX, deltaY));
+                        DeviceMoved?.Invoke(this,
+                            new DeviceMovedEventArgs(deviceId, deltaX, deltaY, btnFlags, wheelDelta, hWheelDelta));
                     }
                 }
             }
@@ -129,6 +189,8 @@ public class RawInputManager : IDisposable
     {
         private bool _isInitialized = false;
         public event EventHandler<RawInputEventArgs>? RawInputReceived;
+        public event EventHandler<DeviceChangeEventArgs>? DeviceChangeReceived;
+        private IntPtr _hDevNotify = IntPtr.Zero;
 
         public HiddenForm()
         {
@@ -145,13 +207,49 @@ public class RawInputManager : IDisposable
         {
             CreateHandle();
             _isInitialized = true;
+            RegisterForDeviceNotifications();
         }
 
         protected override void WndProc(ref Message m)
         {
-            if (m.Msg == WM_INPUT)
+            if (m.Msg == RawInputConstants.WM_INPUT)
             {
                 RawInputReceived?.Invoke(this, new RawInputEventArgs(m.LParam));
+            }
+            else if (m.Msg == RawInputConstants.WM_INPUT_DEVICE_CHANGE)
+            {
+                // wParam: GIDC_ARRIVAL(1) / GIDC_REMOVAL(2)
+                int change = m.WParam.ToInt32();
+                DeviceChangeReceived?.Invoke(this, new DeviceChangeEventArgs(change, m.LParam));
+            }
+            else if (m.Msg == DeviceNotificationConstants.WM_DEVICECHANGE)
+            {
+                int wParam = m.WParam.ToInt32();
+                if (wParam == DeviceNotificationConstants.DBT_DEVICEARRIVAL ||
+                    wParam == DeviceNotificationConstants.DBT_DEVICEREMOVECOMPLETE)
+                {
+                    try
+                    {
+                        var hdr = Marshal.PtrToStructure<DEV_BROADCAST_HDR>(m.LParam);
+                        if (hdr.dbch_devicetype == DeviceNotificationConstants.DBT_DEVTYP_DEVICEINTERFACE)
+                        {
+                            // Parse interface detail
+                            int baseSize = Marshal.SizeOf<DEV_BROADCAST_DEVICEINTERFACE>();
+                            IntPtr pName = IntPtr.Add(m.LParam, baseSize);
+                            string? path = Marshal.PtrToStringUni(pName);
+                            if (!string.IsNullOrWhiteSpace(path))
+                            {
+                                bool arrived = (wParam == DeviceNotificationConstants.DBT_DEVICEARRIVAL);
+                                // Reuse DeviceChangeEventArgs to propagate with interface path
+                                DeviceChangeReceived?.Invoke(this, new DeviceChangeEventArgs(
+                                    arrived ? RawInputConstants.GIDC_ARRIVAL : RawInputConstants.GIDC_REMOVAL,
+                                    IntPtr.Zero,
+                                    path));
+                            }
+                        }
+                    }
+                    catch { /* ignore */ }
+                }
             }
             base.WndProc(ref m);
         }
@@ -179,11 +277,79 @@ public class RawInputManager : IDisposable
                 return cp;
             }
         }
+
+        private void RegisterForDeviceNotifications()
+        {
+            try
+            {
+                var filter = new DEV_BROADCAST_DEVICEINTERFACE
+                {
+                    dbcc_size = Marshal.SizeOf<DEV_BROADCAST_DEVICEINTERFACE>(),
+                    dbcc_devicetype = DeviceNotificationConstants.DBT_DEVTYP_DEVICEINTERFACE,
+                    dbcc_reserved = 0,
+                    dbcc_classguid = DeviceInterfaceGuids.Mouse
+                };
+
+                IntPtr pFilter = Marshal.AllocHGlobal(filter.dbcc_size);
+                try
+                {
+                    Marshal.StructureToPtr(filter, pFilter, false);
+                    _hDevNotify = RegisterDeviceNotification(this.Handle, pFilter, DeviceNotificationConstants.DEVICE_NOTIFY_WINDOW_HANDLE);
+                }
+                finally
+                {
+                    Marshal.FreeHGlobal(pFilter);
+                }
+            }
+            catch { /* ignore */ }
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            try
+            {
+                if (_hDevNotify != IntPtr.Zero)
+                {
+                    UnregisterDeviceNotification(_hDevNotify);
+                    _hDevNotify = IntPtr.Zero;
+                }
+            }
+            catch { /* ignore */ }
+            base.Dispose(disposing);
+        }
     }
 
     private class RawInputEventArgs : EventArgs
     {
         public IntPtr LParam { get; }
         public RawInputEventArgs(IntPtr lParam) => LParam = lParam;
+    }
+
+    private class DeviceChangeEventArgs : EventArgs
+    {
+        public int Change { get; }
+        public IntPtr LParam { get; }
+        public string? InterfacePath { get; }
+        public DeviceChangeEventArgs(int change, IntPtr lParam, string? interfacePath = null)
+        {
+            Change = change;
+            LParam = lParam;
+            InterfacePath = interfacePath;
+        }
+    }
+
+    private void OnRawInputDeviceChangeReceived(object? sender, DeviceChangeEventArgs e)
+    {
+        try
+        {
+            string deviceId = e.InterfacePath ?? GetDeviceId(e.LParam);
+            bool arrived = e.Change == RawInputConstants.GIDC_ARRIVAL;
+            System.Diagnostics.Debug.WriteLine($"[RawInput] Device {(arrived ? "ARRIVAL" : "REMOVAL")} : {deviceId}");
+            DeviceConnectionChanged?.Invoke(this, new DeviceConnectionChangedEventArgs(deviceId, arrived));
+        }
+        catch
+        {
+            // ignore errors for robustness
+        }
     }
 }

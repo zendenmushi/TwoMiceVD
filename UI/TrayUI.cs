@@ -1,5 +1,6 @@
 using System;
 using System.Drawing;
+using System.Threading.Tasks;
 using System.Windows.Forms;
 using TwoMiceVD.Configuration;
 using TwoMiceVD.Core;
@@ -16,14 +17,18 @@ public class TrayUI : IDisposable
     private PairingDialog? _pairingDialog;
     private SettingsDialog? _settingsDialog;
     private readonly SwitchPolicy _switchPolicy;
+    private readonly VirtualDesktopController _vdController;
     
     public event EventHandler? PairingRequested;
+    public event EventHandler? PairingStarted;
+    public event EventHandler? PairingCompleted;
 
-    public TrayUI(ConfigStore config, RawInputManager rawInputManager, SwitchPolicy switchPolicy)
+    public TrayUI(ConfigStore config, RawInputManager rawInputManager, SwitchPolicy switchPolicy, VirtualDesktopController vdController)
     {
         _config = config;
         _rawInputManager = rawInputManager;
         _switchPolicy = switchPolicy;
+        _vdController = vdController;
         _menu = BuildContextMenu(); // 強参照を保持してGCによる解放を防ぐ
         _icon = new NotifyIcon
         {
@@ -115,22 +120,125 @@ public class TrayUI : IDisposable
         return menu;
     }
 
-    private void StartPairing()
+    private async void StartPairing()
     {
-        if (_pairingDialog == null || _pairingDialog.IsDisposed)
-        {
-            _pairingDialog = new PairingDialog(_config, _rawInputManager);
-        }
-        
         // ペアリング開始時に切り替えを無効化
         _switchPolicy.IsPairing = true;
         
-        _pairingDialog.ShowDialog();
-        
-        // ペアリング終了時に切り替えを有効化
-        _switchPolicy.IsPairing = false;
-        
-        PairingRequested?.Invoke(this, EventArgs.Empty);
+        try
+        {
+            // 仮想デスクトップ構成の検証を実行
+            var validationResult = await _vdController.ValidateDesktopConfigurationAsync();
+            
+            if (!validationResult.IsValid)
+            {
+                // エラータイプによって処理を分岐
+                if (validationResult.ErrorType == VirtualDesktopController.DesktopValidationErrorType.NotEnoughDesktops)
+                {
+                    // デスクトップが1枚の場合：作成を提案
+                    var result = MessageBox.Show(
+                        "仮想デスクトップが1枚しかありません。\n\n" +
+                        "新しいデスクトップを自動作成してペアリングを続行しますか？\n" +
+                        "（Win+Ctrl+D ホットキーを送信して作成します）",
+                        "仮想デスクトップの作成",
+                        MessageBoxButtons.YesNo,
+                        MessageBoxIcon.Question
+                    );
+
+                    if (result == DialogResult.Yes)
+                    {
+                        try
+                        {
+                            // 新しいデスクトップを作成してGUIDも取得
+                            var guids = await _vdController.CreateDesktopAsync();
+                            if (guids == null)
+                            {
+                                MessageBox.Show(
+                                    "デスクトップ作成またはGUID取得に失敗しました。",
+                                    "エラー",
+                                    MessageBoxButtons.OK,
+                                    MessageBoxIcon.Error
+                                );
+                                return;
+                            }
+                            
+                            // 検証結果を手動で構築（検証成功として扱う）
+                            validationResult = new VirtualDesktopController.DesktopValidationResult
+                            {
+                                IsValid = true,
+                                ErrorType = VirtualDesktopController.DesktopValidationErrorType.None,
+                                VD0Guid = guids.Value.vd0,
+                                VD1Guid = guids.Value.vd1
+                            };
+                        }
+                        catch (Exception createEx)
+                        {
+                            MessageBox.Show(
+                                $"デスクトップ作成中にエラーが発生しました:\n{createEx.Message}",
+                                "作成エラー",
+                                MessageBoxButtons.OK,
+                                MessageBoxIcon.Error
+                            );
+                            return;
+                        }
+                    }
+                    else
+                    {
+                        // ユーザーがキャンセルした場合はペアリングを中止
+                        return;
+                    }
+                }
+                else
+                {
+                    // その他のエラーの場合：従来通りエラーメッセージを表示
+                    MessageBox.Show(
+                        validationResult.ErrorMessage ?? "仮想デスクトップ構成に問題があります。",
+                        "ペアリング開始エラー",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Warning
+                    );
+                    return;
+                }
+            }
+            
+            // 検証成功時：GUIDを設定に保存
+            _config.VirtualDesktops.Mode = "GUID";
+            _config.VirtualDesktops.Ids["VD0"] = validationResult.VD0Guid.ToString();
+            _config.VirtualDesktops.Ids["VD1"] = validationResult.VD1Guid.ToString();
+            _config.Save();
+            
+            // ペアリング開始を通知
+            PairingStarted?.Invoke(this, EventArgs.Empty);
+            
+            // ペアリングダイアログを表示
+            if (_pairingDialog == null || _pairingDialog.IsDisposed)
+            {
+                _pairingDialog = new PairingDialog(_config, _rawInputManager);
+            }
+            
+            _pairingDialog.ShowDialog();
+            
+            // ペアリング完了後にマーカーシステムを再初期化
+            _ = Task.Run(async () => await ReinitializeMarkersAsync());
+            
+            // ペアリング完了を通知
+            PairingCompleted?.Invoke(this, EventArgs.Empty);
+            PairingRequested?.Invoke(this, EventArgs.Empty);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(
+                $"ペアリング処理中にエラーが発生しました：{ex.Message}",
+                "エラー",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Error
+            );
+        }
+        finally
+        {
+            // ペアリング終了時に切り替えを有効化
+            _switchPolicy.IsPairing = false;
+        }
     }
 
     private void ShowSettings()
@@ -189,6 +297,44 @@ public class TrayUI : IDisposable
     public void ShowNotification(string message, ToolTipIcon icon = ToolTipIcon.Info)
     {
         _icon.ShowBalloonTip(3000, "TwoMiceVD", message, icon);
+    }
+
+    /// <summary>
+    /// ペアリング完了後のマーカーシステム再初期化
+    /// </summary>
+    private async Task ReinitializeMarkersAsync()
+    {
+        try
+        {
+            System.Diagnostics.Debug.WriteLine("[TrayUI] ペアリング完了、マーカーシステムを再初期化中...");
+            
+            // 少し待機してからマーカー再初期化を開始
+            await Task.Delay(500);
+            
+            bool success = await _vdController.InitializeMarkersAsync();
+            
+            if (success)
+            {
+                System.Diagnostics.Debug.WriteLine("[TrayUI] マーカーシステムの再初期化が完了しました");
+                // 成功時の情報バルーンは表示しない
+            }
+            else
+            {
+                System.Diagnostics.Debug.WriteLine("[TrayUI] マーカーシステムの再初期化に失敗しました");
+                ShowNotification(
+                    "ペアリングは完了しましたが、高速判定システムの更新に失敗しました",
+                    ToolTipIcon.Warning
+                );
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[TrayUI] マーカー再初期化中にエラー: {ex.Message}");
+            ShowNotification(
+                $"マーカー再初期化中にエラーが発生しました: {ex.Message}",
+                ToolTipIcon.Warning
+            );
+        }
     }
 
     public void Dispose()

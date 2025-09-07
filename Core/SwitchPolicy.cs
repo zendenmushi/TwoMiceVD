@@ -16,6 +16,11 @@ public class SwitchPolicy
     /// </summary>
     public bool IsPairing { get; set; } = false;
 
+    /// <summary>
+    /// 自動切り替えの有効/無効（運用中に一時停止する用途）
+    /// </summary>
+    public bool AutoSwitchEnabled { get; set; } = true;
+
     public SwitchPolicy(VirtualDesktopController controller, ConfigStore config)
     {
         _controller = controller;
@@ -26,6 +31,8 @@ public class SwitchPolicy
     {
         // ペアリング中は切り替えを無効化
         if (IsPairing) return false;
+        // 一時停止中は切り替えを無効化
+        if (!AutoSwitchEnabled) return false;
 
         int move = Math.Abs(dx) + Math.Abs(dy);
         if (move <= 0) return false;
