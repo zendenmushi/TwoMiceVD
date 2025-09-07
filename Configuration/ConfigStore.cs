@@ -28,6 +28,54 @@ public class ConfigStore
     public Dictionary<string, string> Bindings { get; set; } = new Dictionary<string, string>();
     public VirtualDesktopInfo VirtualDesktops { get; set; } = new VirtualDesktopInfo();
 
+    // ---- Helpers for multi-desktop (internal structure ready) ----
+    public static bool TryParseDesktopKey(string key, out int index)
+    {
+        index = -1;
+        if (string.IsNullOrEmpty(key)) return false;
+        if (!key.StartsWith("VD", StringComparison.OrdinalIgnoreCase)) return false;
+        return int.TryParse(key.Substring(2), out index);
+    }
+
+    public int GetDesktopCount()
+    {
+        int max = -1;
+        foreach (var k in VirtualDesktops.Ids.Keys)
+        {
+            if (TryParseDesktopKey(k, out int i)) max = Math.Max(max, i);
+        }
+        return max >= 0 ? (max + 1) : 0;
+    }
+
+    public int? TryGetIndexByKey(string desktopKey)
+    {
+        return TryParseDesktopKey(desktopKey, out int idx) ? idx : null;
+    }
+
+    public int? TryGetIndexByGuid(Guid guid)
+    {
+        foreach (var kv in VirtualDesktops.Ids)
+        {
+            if (Guid.TryParse(kv.Value, out var g) && g == guid)
+            {
+                if (TryParseDesktopKey(kv.Key, out int idx)) return idx;
+            }
+        }
+        return null;
+    }
+
+    public string? TryGetKeyByGuid(Guid guid)
+    {
+        foreach (var kv in VirtualDesktops.Ids)
+        {
+            if (Guid.TryParse(kv.Value, out var g) && g == guid)
+            {
+                return kv.Key;
+            }
+        }
+        return null;
+    }
+
     public static ConfigStore Load()
     {
         try

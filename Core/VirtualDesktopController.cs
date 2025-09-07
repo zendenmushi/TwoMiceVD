@@ -85,29 +85,18 @@ public class VirtualDesktopController : IDisposable
             // GUIDモード: 実際はGUIDからインデックスを推定してSendInputで切り替え
             System.Diagnostics.Debug.WriteLine($"[TwoMiceVD] GUIDモード: {targetGuid}");
             
-            // ConfigStoreからGUIDとインデックスのマッピングを取得
+            // ConfigStoreからGUIDとインデックスのマッピングを汎用に取得
             if (_config != null)
             {
-                string? targetIndexStr = null;
-                
-                // VD0とVD1のGUIDを確認
-                if (_config.VirtualDesktops.Ids.TryGetValue("VD0", out string? vd0Guid) && vd0Guid == targetGuid.ToString())
+                string? targetKey = _config.TryGetKeyByGuid(targetGuid);
+                if (targetKey != null)
                 {
-                    targetIndexStr = "VD0";
-                }
-                else if (_config.VirtualDesktops.Ids.TryGetValue("VD1", out string? vd1Guid) && vd1Guid == targetGuid.ToString())
-                {
-                    targetIndexStr = "VD1";
-                }
-                
-                if (targetIndexStr != null)
-                {
-                    System.Diagnostics.Debug.WriteLine($"[TwoMiceVD] GUID→インデックス変換: {targetGuid} → {targetIndexStr}");
-                    SwitchUsingShortcuts(targetIndexStr);
+                    System.Diagnostics.Debug.WriteLine($"[TwoMiceVD] GUID→デスクトップキー変換: {targetGuid} → {targetKey}");
+                    SwitchUsingShortcuts(targetKey);
                     return;
                 }
                 
-                System.Diagnostics.Debug.WriteLine($"[TwoMiceVD] GUID→インデックス変換失敗、VD0として処理: {targetGuid}");
+                System.Diagnostics.Debug.WriteLine($"[TwoMiceVD] GUID→デスクトップキー変換失敗、VD0として処理: {targetGuid}");
             }
             
             // GUID解決不可のためショートカット方式で切り替え（VD0と仮定）
@@ -122,35 +111,44 @@ public class VirtualDesktopController : IDisposable
 
     private void SwitchUsingShortcuts(string desktopId)
     {
-        // "VD0" または "VD1" からインデックス 0 または 1 を取得
-        if (int.TryParse(desktopId.Replace("VD", ""), out int targetIndex))
+        // "VD{n}" からインデックス n を取得（将来の多枚数対応）
+        int targetIndex;
+        if (_config != null && _config.TryGetIndexByKey(desktopId) is int idx)
         {
-            System.Diagnostics.Debug.WriteLine($"[TwoMiceVD] SendInputモードで切り替え: インデックス={targetIndex}");
-            
-            // 手動切替などでズレた場合に備えて、現在のインデックスを高速判定で同期
-            bool synced = SyncCurrentDesktopIndex();
-
-            if (synced && targetIndex == _currentDesktopIndex)
-            {
-                System.Diagnostics.Debug.WriteLine("[TwoMiceVD] 同期後、既に目的インデックスのためスキップ");
-                return;
-            }
-
-            if (targetIndex == 0)
-            {
-                SendDesktopLeftShortcut(); // デスクトップ1へ切り替え
-            }
-            else if (targetIndex == 1)
-            {
-                SendDesktopRightShortcut(); // デスクトップ2へ切り替え  
-            }
-
-            _currentDesktopIndex = targetIndex;
+            targetIndex = idx;
+        }
+        else if (int.TryParse(desktopId.Replace("VD", ""), out int parsed))
+        {
+            targetIndex = parsed;
         }
         else
         {
             System.Diagnostics.Debug.WriteLine($"[TwoMiceVD] 不正なdesktopId: {desktopId}");
+            return;
         }
+
+        // 手動切替などでズレた場合に備えて、現在のインデックスを高速判定で同期
+        bool synced = SyncCurrentDesktopIndex();
+
+        // 現在地と目標が一致していればスキップ
+        if (synced && targetIndex == _currentDesktopIndex)
+        {
+            System.Diagnostics.Debug.WriteLine("[TwoMiceVD] 同期後、既に目的インデックスのためスキップ");
+            return;
+        }
+
+        // 目標インデックスへ移動（将来の多枚数対応：複数回送出）
+        int delta = targetIndex - _currentDesktopIndex;
+        if (delta > 0)
+        {
+            for (int i = 0; i < delta; i++) SendDesktopRightShortcut();
+        }
+        else if (delta < 0)
+        {
+            for (int i = 0; i < -delta; i++) SendDesktopLeftShortcut();
+        }
+
+        _currentDesktopIndex = targetIndex;
     }
 
     /// <summary>
