@@ -22,6 +22,13 @@ internal struct RAWINPUTHEADER
 }
 
 [StructLayout(LayoutKind.Sequential)]
+internal struct RAWINPUTDEVICELIST
+{
+    public IntPtr hDevice;
+    public RawInputType dwType;
+}
+
+[StructLayout(LayoutKind.Sequential)]
 internal struct RAWINPUT
 {
     public RAWINPUTHEADER header;
@@ -53,4 +60,22 @@ internal struct POINT
 {
     public int X;
     public int Y;
+}
+
+[StructLayout(LayoutKind.Sequential)]
+internal struct DEV_BROADCAST_HDR
+{
+    public int dbch_size;
+    public int dbch_devicetype;
+    public int dbch_reserved;
+}
+
+[StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+internal struct DEV_BROADCAST_DEVICEINTERFACE
+{
+    public int dbcc_size;
+    public int dbcc_devicetype;
+    public int dbcc_reserved;
+    public Guid dbcc_classguid;
+    // followed by variable-length null-terminated Unicode string
 }

@@ -18,6 +18,8 @@ internal class Program : ApplicationContext
     private readonly ConfigStore? _config;
     private readonly MousePositionManager? _mousePositionManager;
     private readonly System.Collections.Generic.Dictionary<string, int> _buttonsDownCountByDevice = new();
+    private bool _autoSwitchTemporarilyDisabled = false;
+    private readonly System.Collections.Generic.HashSet<string> _connectedDevicePaths = new(System.StringComparer.OrdinalIgnoreCase);
     
     // 直近で動いているマウス（アクティブ）の判定用
     private string? _activeDeviceId;
@@ -80,6 +82,23 @@ internal class Program : ApplicationContext
 
             // Raw input からの移動イベントを処理
             _rawInput.DeviceMoved += OnDeviceMoved;
+            
+            // 起動時の接続状態を列挙して初期化
+            try
+            {
+                var initial = _rawInput.GetCurrentlyConnectedMouseDevicePaths();
+                foreach (var path in initial)
+                {
+                    _connectedDevicePaths.Add(path);
+                }
+            }
+            catch { /* 列挙失敗は無視 */ }
+            
+            // 接続変更通知を購読
+            _rawInput.DeviceConnectionChanged += OnDeviceConnectionChanged;
+            
+            // 初期状態での一時停止/再開を反映
+            EvaluateAutoSwitchSuspension();
 
             // 仮想デスクトップ2枚の存在を前提とするため、チェックは行わない
 
@@ -261,6 +280,9 @@ internal class Program : ApplicationContext
         if (_isInitializing || _isPairing)
             return;
         
+        // 接続状況に応じて自動切替の一時停止/再開を判定
+        EvaluateAutoSwitchSuspension();
+        
         // Track button press state per device for drag/hold locking
         if (e.ButtonFlags != 0)
         {
@@ -332,6 +354,65 @@ internal class Program : ApplicationContext
         if (_config?.EnableMousePositionMemory == true)
         {
             _mousePositionManager?.UpdateDevicePosition(e.DeviceId, e.DeltaX, e.DeltaY);
+        }
+    }
+
+    private void OnDeviceConnectionChanged(object? sender, DeviceConnectionChangedEventArgs e)
+    {
+        if (string.IsNullOrWhiteSpace(e.DeviceId)) return;
+        if (e.Arrived)
+            _connectedDevicePaths.Add(e.DeviceId);
+        else
+            _connectedDevicePaths.Remove(e.DeviceId);
+
+        EvaluateAutoSwitchSuspension();
+    }
+
+    /// <summary>
+    /// 接続状況から「マウスが1台だけ」を判定し、
+    /// 自動切り替えの一時停止/再開とバルーン表示を行う
+    /// </summary>
+    private void EvaluateAutoSwitchSuspension()
+    {
+        if (_config == null || _policy == null || _tray == null) return;
+        // 設定上のデバイスが2台未満なら対象外
+        var configured = new System.Collections.Generic.HashSet<string>(System.StringComparer.OrdinalIgnoreCase);
+        foreach (var dev in _config.Devices.Values)
+        {
+            if (!string.IsNullOrWhiteSpace(dev.DevicePath)) configured.Add(dev.DevicePath);
+        }
+        if (configured.Count < 2) return;
+
+        // 1) 接続状況での判定を優先
+        int connectedConfiguredCount = 0;
+        foreach (var path in configured)
+        {
+            if (_connectedDevicePaths.Contains(path)) connectedConfiguredCount++;
+        }
+
+        if (connectedConfiguredCount == 1)
+        {
+            if (!_autoSwitchTemporarilyDisabled)
+            {
+                _autoSwitchTemporarilyDisabled = true;
+                _policy.AutoSwitchEnabled = false;
+                _tray.ShowNotification(
+                    "接続中のマウスが1台になりました。自動切り替えを一時停止します。",
+                    ToolTipIcon.Warning
+                );
+            }
+        }
+        else if (connectedConfiguredCount >= 2)
+        {
+            if (_autoSwitchTemporarilyDisabled)
+            {
+                _autoSwitchTemporarilyDisabled = false;
+                _policy.AutoSwitchEnabled = true;
+                _tray.ShowNotification(
+                    "2台のマウスを検出。自動切り替えを再開します。",
+                    ToolTipIcon.Info
+                );
+            }
         }
     }
 

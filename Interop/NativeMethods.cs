@@ -26,6 +26,9 @@ internal static class NativeMethods
     [DllImport("User32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
     internal static extern uint GetRawInputDeviceInfo(IntPtr hDevice, uint uiCommand, IntPtr pData, ref uint pcbSize);
 
+    [DllImport("user32.dll", SetLastError = true)]
+    internal static extern uint GetRawInputDeviceList(IntPtr pRawInputDeviceList, ref uint puiNumDevices, uint cbSize);
+
     // Window style helpers
     internal const int GWL_EXSTYLE = -20;
     internal const int SWP_NOSIZE = 0x0001;
@@ -41,4 +44,12 @@ internal static class NativeMethods
 
     [DllImport("user32.dll", SetLastError = true)]
     internal static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
+
+    // Device notifications
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    internal static extern IntPtr RegisterDeviceNotification(IntPtr hRecipient, IntPtr notificationFilter, int flags);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool UnregisterDeviceNotification(IntPtr handle);
 }

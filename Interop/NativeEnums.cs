@@ -2,9 +2,34 @@ using System;
 
 namespace TwoMiceVD.Interop;
 
+[Flags]
 internal enum RawInputDeviceFlags : uint
 {
-    INPUTSINK = 0x00000100,
+    INPUTSINK   = 0x00000100,
+    DEVNOTIFY   = 0x00002000,
+}
+
+internal static class RawInputConstants
+{
+    public const int WM_INPUT = 0x00FF;
+    public const int WM_INPUT_DEVICE_CHANGE = 0x00FE;
+    public const int GIDC_ARRIVAL = 1;
+    public const int GIDC_REMOVAL = 2;
+}
+
+internal static class DeviceNotificationConstants
+{
+    public const int WM_DEVICECHANGE = 0x0219;
+    public const int DBT_DEVICEARRIVAL = 0x8000;
+    public const int DBT_DEVICEREMOVECOMPLETE = 0x8004;
+    public const int DBT_DEVTYP_DEVICEINTERFACE = 0x00000005;
+    public const int DEVICE_NOTIFY_WINDOW_HANDLE = 0x00000000;
+}
+
+internal static class DeviceInterfaceGuids
+{
+    // GUID_DEVINTERFACE_MOUSE {378DE44C-56EF-11D1-BC8C-00A0C91405DD}
+    public static readonly Guid Mouse = new Guid("378DE44C-56EF-11D1-BC8C-00A0C91405DD");
 }
 
 internal enum RawInputType : uint

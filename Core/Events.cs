@@ -23,3 +23,15 @@ public class DeviceMovedEventArgs : EventArgs
         HWheelDelta = hWheelDelta;
     }
 }
+
+public class DeviceConnectionChangedEventArgs : EventArgs
+{
+    public string DeviceId { get; }
+    public bool Arrived { get; }
+
+    public DeviceConnectionChangedEventArgs(string deviceId, bool arrived)
+    {
+        DeviceId = deviceId;
+        Arrived = arrived;
+    }
+}
