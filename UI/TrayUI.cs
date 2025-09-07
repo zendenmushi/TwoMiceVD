@@ -20,6 +20,8 @@ public class TrayUI : IDisposable
     private readonly VirtualDesktopController _vdController;
     
     public event EventHandler? PairingRequested;
+    public event EventHandler? PairingStarted;
+    public event EventHandler? PairingCompleted;
 
     public TrayUI(ConfigStore config, RawInputManager rawInputManager, SwitchPolicy switchPolicy, VirtualDesktopController vdController)
     {
@@ -205,6 +207,9 @@ public class TrayUI : IDisposable
             _config.VirtualDesktops.Ids["VD1"] = validationResult.VD1Guid.ToString();
             _config.Save();
             
+            // ペアリング開始を通知
+            PairingStarted?.Invoke(this, EventArgs.Empty);
+            
             // ペアリングダイアログを表示
             if (_pairingDialog == null || _pairingDialog.IsDisposed)
             {
@@ -213,6 +218,11 @@ public class TrayUI : IDisposable
             
             _pairingDialog.ShowDialog();
             
+            // ペアリング完了後にマーカーシステムを再初期化
+            _ = Task.Run(async () => await ReinitializeMarkersAsync());
+            
+            // ペアリング完了を通知
+            PairingCompleted?.Invoke(this, EventArgs.Empty);
             PairingRequested?.Invoke(this, EventArgs.Empty);
         }
         catch (Exception ex)
@@ -287,6 +297,44 @@ public class TrayUI : IDisposable
     public void ShowNotification(string message, ToolTipIcon icon = ToolTipIcon.Info)
     {
         _icon.ShowBalloonTip(3000, "TwoMiceVD", message, icon);
+    }
+
+    /// <summary>
+    /// ペアリング完了後のマーカーシステム再初期化
+    /// </summary>
+    private async Task ReinitializeMarkersAsync()
+    {
+        try
+        {
+            System.Diagnostics.Debug.WriteLine("[TrayUI] ペアリング完了、マーカーシステムを再初期化中...");
+            
+            // 少し待機してからマーカー再初期化を開始
+            await Task.Delay(500);
+            
+            bool success = await _vdController.InitializeMarkersAsync();
+            
+            if (success)
+            {
+                System.Diagnostics.Debug.WriteLine("[TrayUI] マーカーシステムの再初期化が完了しました");
+                // 成功時の情報バルーンは表示しない
+            }
+            else
+            {
+                System.Diagnostics.Debug.WriteLine("[TrayUI] マーカーシステムの再初期化に失敗しました");
+                ShowNotification(
+                    "ペアリングは完了しましたが、高速判定システムの更新に失敗しました",
+                    ToolTipIcon.Warning
+                );
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[TrayUI] マーカー再初期化中にエラー: {ex.Message}");
+            ShowNotification(
+                $"マーカー再初期化中にエラーが発生しました: {ex.Message}",
+                ToolTipIcon.Warning
+            );
+        }
     }
 
     public void Dispose()

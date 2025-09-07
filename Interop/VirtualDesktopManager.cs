@@ -53,14 +53,8 @@ namespace TwoMiceVD.Interop
             }
             catch (COMException ex)
             {
-                if (ex.HResult == unchecked((int)0x8002802B)) // TYPE_E_ELEMENTNOTFOUND
-                {
-                    Debug.WriteLine($"[TwoMiceVD] GetWindowDesktopId: 指定されたデスクトップGUIDが見つかりません: HWND=0x{hwnd:X}, HRESULT=0x{ex.HResult:X8}");
-                }
-                else
-                {
-                    Debug.WriteLine($"[TwoMiceVD] GetWindowDesktopId失敗: HWND=0x{hwnd:X}, HRESULT=0x{ex.HResult:X8}, Message={ex.Message}");
-                }
+                // TYPE_E_ELEMENTNOTFOUND はウィンドウが仮想デスクトップに関連付かない（ツールウィンドウ等）か無効な場合に発生しうる
+                Debug.WriteLine($"[TwoMiceVD] GetWindowDesktopId失敗: HWND=0x{hwnd:X}, HRESULT=0x{ex.HResult:X8}, Message={ex.Message}");
                 return null;
             }
         }

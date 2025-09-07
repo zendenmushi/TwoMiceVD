@@ -17,12 +17,17 @@ public class VirtualDesktopController : IDisposable
     private readonly InputSimulator _inputSimulator;
     private readonly Dictionary<int, Point> _desktopCursorPositions = new Dictionary<int, Point>();
     private VirtualDesktopManagerWrapper? _vdManager;
+    private FastDesktopDetector? _fastDetector;
     private bool _disposed = false;
     private readonly ConfigStore? _config;
+    private readonly Control _uiInvoker;
 
     public VirtualDesktopController(ConfigStore? config)
     {
         _config = config;
+        // UIスレッドに紐づくInvokerを作成（このコンストラクタはUIスレッド上で呼ばれる想定）
+        _uiInvoker = new Control();
+        _uiInvoker.CreateControl();
         
         // InputSimulatorのインスタンスを初期化
         _inputSimulator = new InputSimulator();
@@ -31,11 +36,18 @@ public class VirtualDesktopController : IDisposable
         try
         {
             _vdManager = new VirtualDesktopManagerWrapper();
+            
+            // FastDesktopDetectorを初期化
+            if (_config != null)
+            {
+                _fastDetector = new FastDesktopDetector(_vdManager, _config, this, _uiInvoker);
+            }
         }
         catch
         {
             // COM初期化失敗時はSendInputのみで動作
             _vdManager = null;
+            _fastDetector = null;
         }
     }
 
@@ -48,6 +60,24 @@ public class VirtualDesktopController : IDisposable
     public void SwitchTo(string desktopId)
     {
         System.Diagnostics.Debug.WriteLine($"[TwoMiceVD] SwitchTo呼び出し: desktopId={desktopId}");
+
+        // まず高速判定システムで現在のデスクトップを確認
+        string? currentDesktopId = GetCurrentDesktopIdFast();
+        if (currentDesktopId != null)
+        {
+            // 高速判定成功：GUIDをデスクトップIDに変換して比較
+            string? targetDesktopId = ConvertToDesktopId(desktopId);
+            if (targetDesktopId != null && currentDesktopId == targetDesktopId)
+            {
+                System.Diagnostics.Debug.WriteLine($"[TwoMiceVD] 既に目的のデスクトップ({targetDesktopId})にいます - 切り替えをスキップ");
+                return;
+            }
+            System.Diagnostics.Debug.WriteLine($"[TwoMiceVD] デスクトップ切り替えが必要: {currentDesktopId} → {targetDesktopId}");
+        }
+        else
+        {
+            System.Diagnostics.Debug.WriteLine("[TwoMiceVD] 高速判定失敗、通常の切り替え処理を実行");
+        }
         
         // GUIDかどうかを判定
         if (Guid.TryParse(desktopId, out Guid targetGuid))
@@ -73,31 +103,38 @@ public class VirtualDesktopController : IDisposable
                 if (targetIndexStr != null)
                 {
                     System.Diagnostics.Debug.WriteLine($"[TwoMiceVD] GUID→インデックス変換: {targetGuid} → {targetIndexStr}");
-                    FallbackToSendInput(targetIndexStr);
+                    SwitchUsingShortcuts(targetIndexStr);
                     return;
                 }
                 
                 System.Diagnostics.Debug.WriteLine($"[TwoMiceVD] GUID→インデックス変換失敗、VD0として処理: {targetGuid}");
             }
             
-            // フォールバックとしてSendInputを使用（VD0と仮定）
-            FallbackToSendInput("VD0");
+            // GUID解決不可のためショートカット方式で切り替え（VD0と仮定）
+            SwitchUsingShortcuts("VD0");
         }
         else
         {
-            // インデックスモード: 従来の処理
-            FallbackToSendInput(desktopId);
+            // インデックスモード: ショートカット方式で切り替え
+            SwitchUsingShortcuts(desktopId);
         }
     }
 
-    private void FallbackToSendInput(string desktopId)
+    private void SwitchUsingShortcuts(string desktopId)
     {
         // "VD0" または "VD1" からインデックス 0 または 1 を取得
         if (int.TryParse(desktopId.Replace("VD", ""), out int targetIndex))
         {
             System.Diagnostics.Debug.WriteLine($"[TwoMiceVD] SendInputモードで切り替え: インデックス={targetIndex}");
             
-            if (targetIndex == _currentDesktopIndex) return;
+            // 手動切替などでズレた場合に備えて、現在のインデックスを高速判定で同期
+            bool synced = SyncCurrentDesktopIndex();
+
+            if (synced && targetIndex == _currentDesktopIndex)
+            {
+                System.Diagnostics.Debug.WriteLine("[TwoMiceVD] 同期後、既に目的インデックスのためスキップ");
+                return;
+            }
 
             if (targetIndex == 0)
             {
@@ -116,7 +153,31 @@ public class VirtualDesktopController : IDisposable
         }
     }
 
-    private void SendDesktopLeftShortcut()
+    /// <summary>
+    /// FastDetector が取得した現在のデスクトップIDから _currentDesktopIndex を同期する
+    /// 戻り値: 同期に成功した場合 true（VD0/VD1 いずれかを検出できた）
+    /// </summary>
+    private bool SyncCurrentDesktopIndex()
+    {
+        try
+        {
+            string? detected = GetCurrentDesktopIdFast();
+            if (detected == "VD0")
+            {
+                _currentDesktopIndex = 0;
+                return true;
+            }
+            if (detected == "VD1")
+            {
+                _currentDesktopIndex = 1;
+                return true;
+            }
+        }
+        catch { /* 無視して既存値を維持 */ }
+        return false;
+    }
+
+    public void SendDesktopLeftShortcut()
     {
         // Win+Ctrl+左矢印でデスクトップ1へ切り替え
         _inputSimulator.Keyboard.ModifiedKeyStroke(
@@ -125,7 +186,7 @@ public class VirtualDesktopController : IDisposable
         );
     }
 
-    private void SendDesktopRightShortcut()
+    public void SendDesktopRightShortcut()
     {
         // Win+Ctrl+右矢印でデスクトップ2へ切り替え
         _inputSimulator.Keyboard.ModifiedKeyStroke(
@@ -251,32 +312,62 @@ public class VirtualDesktopController : IDisposable
     /// </summary>
     public async Task<Guid?> GetCurrentDesktopGuidAsync()
     {
+        System.Diagnostics.Debug.WriteLine("[VDController] GetCurrentDesktopGuidAsync開始");
+        
         if (_vdManager?.IsAvailable != true)
+        {
+            System.Diagnostics.Debug.WriteLine("[VDController] VirtualDesktopManagerが利用できません");
             return null;
+        }
 
         Form? probeWindow = null;
         try
         {
+            System.Diagnostics.Debug.WriteLine("[VDController] プローブウィンドウを作成中...");
             probeWindow = CreateProbeWindow();
             
-            // ウィンドウが確実に作成されるまで待機
-            await Task.Delay(200); // 待機時間を延長
+            if (probeWindow == null)
+            {
+                System.Diagnostics.Debug.WriteLine("[VDController] プローブウィンドウの作成に失敗");
+                return null;
+            }
+            var hwnd = GetFormHandleThreadSafe(probeWindow);
+            if (hwnd == IntPtr.Zero)
+            {
+                System.Diagnostics.Debug.WriteLine("[VDController] プローブウィンドウのハンドルが無効");
+                return null;
+            }
+            System.Diagnostics.Debug.WriteLine($"[VDController] プローブウィンドウ作成完了: Handle=0x{hwnd:X}");
             
-            var guid = _vdManager.GetWindowDesktopId(probeWindow.Handle);
+            // ウィンドウが確実に作成されるまで待機
+            await Task.Delay(300); // 待機時間をさらに延長
+            
+            System.Diagnostics.Debug.WriteLine("[VDController] デスクトップGUIDを取得中...");
+            var guid = _vdManager.GetWindowDesktopId(hwnd);
+            
             if (guid == null)
             {
-                System.Diagnostics.Debug.WriteLine($"[TwoMiceVD] GetCurrentDesktopGuid: GUID取得失敗 (TYPE_E_ELEMENTNOTFOUND の可能性)");
+                System.Diagnostics.Debug.WriteLine("[VDController] GUID取得失敗 - プローブウィンドウが適切なデスクトップに配置されていない可能性");
             }
             else
             {
-                System.Diagnostics.Debug.WriteLine($"[TwoMiceVD] GetCurrentDesktopGuid: 取得成功 GUID={guid}");
+                System.Diagnostics.Debug.WriteLine($"[VDController] GUID取得成功: {guid}");
             }
             
             return guid;
         }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[VDController] GetCurrentDesktopGuidAsync中にエラー: {ex.Message}");
+            return null;
+        }
         finally
         {
-            probeWindow?.Dispose();
+            if (probeWindow != null)
+            {
+                System.Diagnostics.Debug.WriteLine("[VDController] プローブウィンドウを破棄");
+                DisposeFormThreadSafe(probeWindow);
+            }
         }
     }
 
@@ -425,8 +516,10 @@ public class VirtualDesktopController : IDisposable
             await Task.Delay(50);
 
             // 両方のGUIDが有効かテスト
-            bool vd0Valid = _vdManager.MoveWindowToDesktop(probeWindow.Handle, vd0Guid);
-            bool vd1Valid = _vdManager.MoveWindowToDesktop(probeWindow.Handle, vd1Guid);
+            var hwnd = probeWindow != null ? GetFormHandleThreadSafe(probeWindow) : IntPtr.Zero;
+            if (hwnd == IntPtr.Zero) return false;
+            bool vd0Valid = _vdManager.MoveWindowToDesktop(hwnd, vd0Guid);
+            bool vd1Valid = _vdManager.MoveWindowToDesktop(hwnd, vd1Guid);
 
             if (!vd0Valid)
             {
@@ -442,35 +535,173 @@ public class VirtualDesktopController : IDisposable
         }
         finally
         {
-            probeWindow?.Dispose();
+            if (probeWindow != null) DisposeFormThreadSafe(probeWindow);
         }
     }
 
     private Form CreateProbeWindow()
     {
-        var form = new Form
+        Form CreateOnUi()
         {
-            FormBorderStyle = FormBorderStyle.None,
-            ShowInTaskbar = false,
-            WindowState = FormWindowState.Normal, // Minimizedから変更
-            Size = new Size(1, 1),
-            StartPosition = FormStartPosition.Manual,
-            Location = new Point(-10000, -10000),
-            Visible = true // falseから変更 - 一時的に表示してからすぐに非表示にする
-        };
+            var form = new Form
+            {
+                FormBorderStyle = FormBorderStyle.None,
+                ShowInTaskbar = false,
+                WindowState = FormWindowState.Normal,
+                Size = new Size(1, 1),
+                StartPosition = FormStartPosition.Manual,
+                Location = new Point(-10000, -10000),
+                Visible = true
+            };
 
-        // 確実にウィンドウハンドルを作成
-        var handle = form.Handle;
-        
-        // ウィンドウが確実に作成されるまで少し待機
-        Application.DoEvents();
-        
-        // すぐに非表示にする
-        form.Visible = false;
-        
-        System.Diagnostics.Debug.WriteLine($"[TwoMiceVD] Probeウィンドウ作成: HWND=0x{handle:X}");
-        
-        return form;
+            // 確実にウィンドウハンドルを作成
+            var handle = form.Handle;
+            Application.DoEvents();
+            form.Visible = false;
+            System.Diagnostics.Debug.WriteLine($"[TwoMiceVD] Probeウィンドウ作成: HWND=0x{handle:X}");
+            return form;
+        }
+
+        if (_uiInvoker.InvokeRequired)
+        {
+            Form? created = null;
+            _uiInvoker.Invoke(new Action(() => created = CreateOnUi()));
+            return created!;
+        }
+        else
+        {
+            return CreateOnUi();
+        }
+    }
+
+    #endregion
+
+    private static IntPtr GetFormHandleThreadSafe(Form form)
+    {
+        if (form.IsDisposed) return IntPtr.Zero;
+        if (form.InvokeRequired)
+        {
+            IntPtr handle = IntPtr.Zero;
+            try
+            {
+                form.Invoke(new Action(() => { if (!form.IsDisposed) handle = form.Handle; }));
+            }
+            catch { return IntPtr.Zero; }
+            return handle;
+        }
+        return form.Handle;
+    }
+
+    private static void DisposeFormThreadSafe(Form form)
+    {
+        if (form.IsDisposed) return;
+        if (form.InvokeRequired)
+        {
+            try { form.Invoke(new Action(() => { if (!form.IsDisposed) form.Dispose(); })); }
+            catch { /* ignore */ }
+        }
+        else
+        {
+            try { form.Dispose(); } catch { }
+        }
+    }
+
+    #region FastDesktopDetector Methods
+
+    /// <summary>
+    /// マーカーシステムを初期化します
+    /// </summary>
+    public async Task<bool> InitializeMarkersAsync()
+    {
+        if (_fastDetector != null)
+        {
+            return await _fastDetector.InitializeMarkersAsync();
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// 現在のデスクトップIDを高速に取得します
+    /// </summary>
+    public string? GetCurrentDesktopIdFast()
+    {
+        if (_fastDetector != null)
+        {
+            return _fastDetector.GetCurrentDesktopId();
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// 現在のデスクトップIDを取得します（自己修復機能付き）
+    /// </summary>
+    public async Task<string?> GetCurrentDesktopIdWithRecoveryAsync()
+    {
+        if (_fastDetector != null)
+        {
+            return await _fastDetector.GetCurrentDesktopIdWithRecovery();
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// 全マーカーの有効性を検証し、必要に応じて修復します
+    /// </summary>
+    public bool ValidateAndRepairMarkers()
+    {
+        if (_fastDetector != null)
+        {
+            return _fastDetector.ValidateAndRepairAll();
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// マーカーシステムが初期化されているかを確認します
+    /// </summary>
+    public bool IsMarkersInitialized => _fastDetector?.IsInitialized ?? false;
+
+    /// <summary>
+    /// マーカーシステムの前提条件をチェックします
+    /// </summary>
+    public async Task<(bool canInitialize, string reason)> CheckMarkerInitializationPrerequisitesAsync()
+    {
+        if (_fastDetector != null)
+        {
+            return await _fastDetector.CheckInitializationPrerequisitesAsync();
+        }
+        return (false, "FastDetectorが初期化されていません");
+    }
+
+    #endregion
+
+    #region Helper Methods
+
+    /// <summary>
+    /// GUID文字列またはデスクトップIDをデスクトップID（VD0/VD1）に変換
+    /// </summary>
+    private string? ConvertToDesktopId(string input)
+    {
+        // 既にデスクトップIDの場合はそのまま返す
+        if (input == "VD0" || input == "VD1")
+            return input;
+
+        // GUIDの場合は設定から対応するデスクトップIDを検索
+        if (Guid.TryParse(input, out Guid targetGuid) && _config != null)
+        {
+            if (_config.VirtualDesktops.Ids.TryGetValue("VD0", out string? vd0Guid) && 
+                vd0Guid == targetGuid.ToString())
+            {
+                return "VD0";
+            }
+            else if (_config.VirtualDesktops.Ids.TryGetValue("VD1", out string? vd1Guid) && 
+                     vd1Guid == targetGuid.ToString())
+            {
+                return "VD1";
+            }
+        }
+
+        return null;
     }
 
     #endregion
@@ -479,6 +710,7 @@ public class VirtualDesktopController : IDisposable
     {
         if (!_disposed)
         {
+            _fastDetector?.Dispose();
             _vdManager?.Dispose();
             _disposed = true;
         }

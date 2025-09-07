@@ -23,11 +23,21 @@ internal class Program : ApplicationContext
     private string? _activeDeviceId;
     private DateTime _activeUntil = DateTime.MinValue;
     private int _activeHoldMs = 150; // 連続動作の猶予時間（設定連動）
+    
+    // 初期化・ペアリング制御フラグ
+    private bool _isInitializing = true; // 初期化中フラグ（コンストラクタで開始）
+    private bool _isPairing = false; // ペアリング中フラグ
 
     public Program()
     {
         try
         {
+#if DEBUG
+            // デバッグビルドの場合、Debug出力をコンソールにも表示
+            System.Diagnostics.Trace.Listeners.Add(new System.Diagnostics.TextWriterTraceListener(Console.Out));
+            System.Diagnostics.Trace.AutoFlush = true;
+#endif
+            
             // 設定ファイルの読み込み
             _config = ConfigStore.Load();
 
@@ -75,12 +85,14 @@ internal class Program : ApplicationContext
 
             // ペアリングメニュー
             _tray.PairingRequested += OnPairingRequested;
+            _tray.PairingStarted += OnPairingStarted;
+            _tray.PairingCompleted += OnPairingCompleted;
 
             // 初期化完了通知
             _tray?.ShowNotification("TwoMiceVD が開始されました", ToolTipIcon.Info);
             
-            // 起動時のGUID検証を非同期で実行
-            _ = Task.Run(async () => await ValidateStartupGuidsAsync());
+            // 起動時のGUID検証とマーカー初期化を順序立てて実行
+            _ = Task.Run(async () => await ValidateStartupAndInitializeMarkersAsync());
         }
         catch (Exception ex)
         {
@@ -97,33 +109,139 @@ internal class Program : ApplicationContext
     {
         try
         {
-            // アプリケーションの完全な初期化を待つ
-            await Task.Delay(1000);
+            System.Diagnostics.Debug.WriteLine("[Program] GUID検証を開始中...");
             
             if (_config == null || _vdController == null || _tray == null)
+            {
+                System.Diagnostics.Debug.WriteLine("[Program] 必要なコンポーネントが初期化されていません");
                 return;
+            }
+
+            // GUID モードでない場合はスキップ
+            if (_config.VirtualDesktops.Mode != "GUID")
+            {
+                System.Diagnostics.Debug.WriteLine("[Program] GUIDモードではないため検証をスキップ");
+                return;
+            }
 
             var validationResult = await _config.ValidateStoredGuidsAsync(_vdController);
-            
-            if (!validationResult.IsValid && _config.VirtualDesktops.Mode == "GUID")
+            if (!validationResult.IsValid)
             {
-                // バルーン通知でメッセージを表示
+                System.Diagnostics.Debug.WriteLine($"[Program] GUID検証失敗: {validationResult.Message}");
+                // 再ペアリングを促すバルーンは表示する
                 _tray.ShowNotification(
-                    validationResult.Message,
+                    string.IsNullOrWhiteSpace(validationResult.Message)
+                        ? "保存された仮想デスクトップが見つかりません。ペアリングをやり直してください。"
+                        : validationResult.Message,
+                    ToolTipIcon.Warning
+                );
+            }
+            else
+            {
+                System.Diagnostics.Debug.WriteLine("[Program] GUID検証が成功しました");
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[Program] GUID検証中にエラー: {ex.Message}");
+            
+            // デバッグ情報のみ出力し、ユーザーには通知しない
+            // マーカーシステムが動作すれば問題ないため
+        }
+    }
+
+    /// <summary>
+    /// GUID検証とマーカーシステム初期化を順序立てて実行
+    /// </summary>
+    private async Task ValidateStartupAndInitializeMarkersAsync()
+    {
+        try
+        {
+            System.Diagnostics.Debug.WriteLine("[Program] GUID検証を開始...");
+            
+            // Step 1: GUID検証を実行
+            await ValidateStartupGuidsAsync();
+            
+            // Step 2: GUID検証完了後、少し待機してからマーカー初期化
+            await Task.Delay(1000); // デスクトップ構成が安定するまで待機
+            
+            System.Diagnostics.Debug.WriteLine("[Program] マーカーシステムの初期化を開始...");
+            
+            // Step 3: マーカーシステムを初期化
+            await InitializeMarkersAsync();
+            
+            // Step 4: 初期化完了 - マウス入力処理を有効化
+            _isInitializing = false;
+            System.Diagnostics.Debug.WriteLine("[Program] 初期化完了 - マウス入力処理を有効化");
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[Program] 統合初期化中にエラー: {ex.Message}");
+            _tray?.ShowNotification(
+                $"システム初期化中にエラーが発生しました: {ex.Message}",
+                ToolTipIcon.Warning
+            );
+            
+            // エラーが発生しても初期化フラグをリセット
+            _isInitializing = false;
+            System.Diagnostics.Debug.WriteLine("[Program] 初期化エラー後もマウス入力処理を有効化");
+        }
+    }
+
+    /// <summary>
+    /// マーカーシステムの初期化
+    /// </summary>
+    private async Task InitializeMarkersAsync()
+    {
+        try
+        {
+            System.Diagnostics.Debug.WriteLine("[Program] マーカーシステムの初期化を開始...");
+            
+            // 少し待機してからマーカー初期化を開始（デスクトップ構成安定化のため）
+            await Task.Delay(500);
+            
+            if (_vdController == null)
+            {
+                System.Diagnostics.Debug.WriteLine("[Program] VirtualDesktopControllerが初期化されていません");
+                return;
+            }
+
+            // 前提条件をチェック
+            System.Diagnostics.Debug.WriteLine("[Program] マーカー初期化の前提条件をチェック中...");
+            var (canInitialize, reason) = await _vdController.CheckMarkerInitializationPrerequisitesAsync();
+            
+            if (!canInitialize)
+            {
+                System.Diagnostics.Debug.WriteLine($"[Program] 前提条件チェック失敗: {reason}");
+                // 情報バルーンは出さない（ログのみ）
+                return;
+            }
+
+            System.Diagnostics.Debug.WriteLine("[Program] 前提条件チェック成功、マーカー初期化を実行...");
+            bool success = await _vdController.InitializeMarkersAsync();
+            
+            if (success)
+            {
+                System.Diagnostics.Debug.WriteLine("[Program] マーカーシステムの初期化が完了しました");
+                // 成功時の情報バルーンは出さない
+            }
+            else
+            {
+                System.Diagnostics.Debug.WriteLine("[Program] マーカーシステムの初期化に失敗しました");
+                _tray?.ShowNotification(
+                    "高速デスクトップ判定システムの初期化に失敗しました\n通常モードで動作します",
                     ToolTipIcon.Warning
                 );
             }
         }
         catch (Exception ex)
         {
-            // 検証エラーは致命的ではないため、ログ出力程度に留める
-            if (_tray != null)
-            {
-                _tray.ShowNotification(
-                    $"GUID検証中にエラーが発生しました: {ex.Message}",
-                    ToolTipIcon.Warning
-                );
-            }
+            System.Diagnostics.Debug.WriteLine($"[Program] マーカー初期化中にエラー: {ex.Message}");
+            System.Diagnostics.Debug.WriteLine($"[Program] エラー詳細: {ex}");
+            _tray?.ShowNotification(
+                $"マーカー初期化中にエラーが発生しました: {ex.Message}",
+                ToolTipIcon.Warning
+            );
         }
     }
 
@@ -139,6 +257,10 @@ internal class Program : ApplicationContext
 
     private void OnDeviceMoved(object? sender, DeviceMovedEventArgs e)
     {
+        // 初期化中またはペアリング中はマウス入力を無視
+        if (_isInitializing || _isPairing)
+            return;
+        
         // Track button press state per device for drag/hold locking
         if (e.ButtonFlags != 0)
         {
@@ -211,6 +333,18 @@ internal class Program : ApplicationContext
         {
             _mousePositionManager?.UpdateDevicePosition(e.DeviceId, e.DeltaX, e.DeltaY);
         }
+    }
+
+    private void OnPairingStarted(object? sender, EventArgs e)
+    {
+        _isPairing = true;
+        System.Diagnostics.Debug.WriteLine("[Program] ペアリング開始 - マウス入力処理を無効化");
+    }
+
+    private void OnPairingCompleted(object? sender, EventArgs e)
+    {
+        _isPairing = false;
+        System.Diagnostics.Debug.WriteLine("[Program] ペアリング完了 - マウス入力処理を有効化");
     }
 
     private void OnPairingRequested(object? sender, EventArgs e)
