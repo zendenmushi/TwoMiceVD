@@ -16,6 +16,7 @@ public partial class SettingsDialog : Form
     private CheckBox? _exclusiveActiveCheckBox;
     private TrackBar? _activeHoldTrackBar;
     private Label? _activeHoldLabel;
+    private CheckBox? _enableDeviceConnectionCheckBox;
     private Button? _okButton;
     private Button? _cancelButton;
 
@@ -146,6 +147,15 @@ public partial class SettingsDialog : Form
         };
         Controls.Add(_activeHoldTrackBar);
 
+        _enableDeviceConnectionCheckBox = new CheckBox
+        {
+            Text = "接続状態監視（2台→1台で自動一時停止）［再起動後に反映］",
+            Location = new Point(20, 320),
+            Size = new Size(420, 24),
+            UseVisualStyleBackColor = true
+        };
+        Controls.Add(_enableDeviceConnectionCheckBox);
+
         _okButton = new Button
         {
             Text = "OK",
@@ -210,6 +220,11 @@ public partial class SettingsDialog : Form
         {
             _activeHoldLabel.Text = _config.ActiveHoldMs.ToString();
         }
+
+        if (_enableDeviceConnectionCheckBox != null)
+        {
+            _enableDeviceConnectionCheckBox.Checked = _config.EnableDeviceConnectionCheck;
+        }
     }
 
     private void SaveSettings()
@@ -237,6 +252,11 @@ public partial class SettingsDialog : Form
         if (_activeHoldTrackBar != null)
         {
             _config.ActiveHoldMs = _activeHoldTrackBar.Value;
+        }
+
+        if (_enableDeviceConnectionCheckBox != null)
+        {
+            _config.EnableDeviceConnectionCheck = _enableDeviceConnectionCheckBox.Checked;
         }
 
         _config.Save();

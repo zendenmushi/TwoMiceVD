@@ -23,6 +23,7 @@ public class ConfigStore
     public bool EnableMousePositionMemory { get; set; } = true;
     public bool ExclusiveActiveMouse { get; set; } = true;
     public int ActiveHoldMs { get; set; } = 150;
+    public bool EnableDeviceConnectionCheck { get; set; } = true;
 
     public Dictionary<string, DeviceInfo> Devices { get; set; } = new Dictionary<string, DeviceInfo>();
     public Dictionary<string, string> Bindings { get; set; } = new Dictionary<string, string>();
@@ -180,7 +181,8 @@ public class ConfigStore
                 swap_bindings = SwapBindings,
                 enable_mouse_position_memory = EnableMousePositionMemory,
                 exclusive_active_mouse = ExclusiveActiveMouse,
-                active_hold_ms = ActiveHoldMs
+                active_hold_ms = ActiveHoldMs,
+                enable_device_connection_check = EnableDeviceConnectionCheck
             },
             impl = new ImplementationConfig
             {
@@ -219,6 +221,8 @@ public class ConfigStore
                 config.ExclusiveActiveMouse = data.ui.exclusive_active_mouse.Value;
             if (data.ui.active_hold_ms.HasValue)
                 config.ActiveHoldMs = data.ui.active_hold_ms.Value;
+            if (data.ui.enable_device_connection_check.HasValue)
+                config.EnableDeviceConnectionCheck = data.ui.enable_device_connection_check.Value;
         }
         
         if (data?.impl != null)
