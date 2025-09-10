@@ -17,6 +17,7 @@ public partial class SettingsDialog : Form
     private TrackBar? _activeHoldTrackBar;
     private Label? _activeHoldLabel;
     private CheckBox? _enableDeviceConnectionCheckBox;
+    private CheckBox? _checkCurrentDesktopCheckBox;
     private Button? _okButton;
     private Button? _cancelButton;
 
@@ -30,7 +31,7 @@ public partial class SettingsDialog : Form
     private void InitializeComponent()
     {
         Text = "設定";
-        Size = new Size(460, 440);
+        Size = new Size(460, 470);
         StartPosition = FormStartPosition.CenterParent;
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
@@ -156,10 +157,21 @@ public partial class SettingsDialog : Form
         };
         Controls.Add(_enableDeviceConnectionCheckBox);
 
+        // 現在のデスクトップ確認オプションのチェックボックス
+        _checkCurrentDesktopCheckBox = new CheckBox
+        {
+            Text = "現在のデスクトップを確認してから切り替え（推奨）",
+            Location = new Point(20, 350),
+            Size = new Size(420, 24),
+            UseVisualStyleBackColor = true,
+            Checked = true
+        };
+        Controls.Add(_checkCurrentDesktopCheckBox);
+
         _okButton = new Button
         {
             Text = "OK",
-            Location = new Point(260, 360),
+            Location = new Point(260, 390),
             Size = new Size(75, 25),
             DialogResult = DialogResult.OK
         };
@@ -169,7 +181,7 @@ public partial class SettingsDialog : Form
         _cancelButton = new Button
         {
             Text = "キャンセル",
-            Location = new Point(345, 360),
+            Location = new Point(345, 390),
             Size = new Size(75, 25),
             DialogResult = DialogResult.Cancel
         };
@@ -225,6 +237,11 @@ public partial class SettingsDialog : Form
         {
             _enableDeviceConnectionCheckBox.Checked = _config.EnableDeviceConnectionCheck;
         }
+
+        if (_checkCurrentDesktopCheckBox != null)
+        {
+            _checkCurrentDesktopCheckBox.Checked = _config.CheckCurrentDesktop;
+        }
     }
 
     private void SaveSettings()
@@ -257,6 +274,11 @@ public partial class SettingsDialog : Form
         if (_enableDeviceConnectionCheckBox != null)
         {
             _config.EnableDeviceConnectionCheck = _enableDeviceConnectionCheckBox.Checked;
+        }
+
+        if (_checkCurrentDesktopCheckBox != null)
+        {
+            _config.CheckCurrentDesktop = _checkCurrentDesktopCheckBox.Checked;
         }
 
         _config.Save();

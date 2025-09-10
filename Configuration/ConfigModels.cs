@@ -42,6 +42,7 @@ internal class SwitchConfig
     public int threshold { get; set; }
     public int hysteresis_ms { get; set; }
     public int max_per_sec { get; set; }
+    public bool check_current_desktop { get; set; } = true;
 }
 
 internal class UiConfig

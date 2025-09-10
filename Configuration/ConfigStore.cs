@@ -24,6 +24,7 @@ public class ConfigStore
     public bool ExclusiveActiveMouse { get; set; } = true;
     public int ActiveHoldMs { get; set; } = 150;
     public bool EnableDeviceConnectionCheck { get; set; } = true;
+    public bool CheckCurrentDesktop { get; set; } = true;
 
     public Dictionary<string, DeviceInfo> Devices { get; set; } = new Dictionary<string, DeviceInfo>();
     public Dictionary<string, string> Bindings { get; set; } = new Dictionary<string, string>();
@@ -173,7 +174,8 @@ public class ConfigStore
             {
                 threshold = ThresholdMovement,
                 hysteresis_ms = HysteresisMs,
-                max_per_sec = MaxSwitchPerSec
+                max_per_sec = MaxSwitchPerSec,
+                check_current_desktop = CheckCurrentDesktop
             },
             ui = new UiConfig
             {
@@ -209,6 +211,8 @@ public class ConfigStore
             config.ThresholdMovement = data.@switch.threshold;
             config.HysteresisMs = data.@switch.hysteresis_ms;
             config.MaxSwitchPerSec = data.@switch.max_per_sec;
+            // 新しい設定項目の読み込み（デフォルトはtrue）
+            config.CheckCurrentDesktop = data.@switch.check_current_desktop;
         }
         
         if (data?.ui != null)
