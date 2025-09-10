@@ -42,6 +42,7 @@ internal class SwitchConfig
     public int threshold { get; set; }
     public int hysteresis_ms { get; set; }
     public int max_per_sec { get; set; }
+    public bool check_current_desktop { get; set; } = true;
 }
 
 internal class UiConfig
@@ -52,6 +53,8 @@ internal class UiConfig
     // 新規項目は後方互換のため nullable で定義
     public bool? exclusive_active_mouse { get; set; }
     public int? active_hold_ms { get; set; }
+    // デバイス接続状態確認機能の有効/無効（省略時は true）
+    public bool? enable_device_connection_check { get; set; }
 }
 
 internal class ImplementationConfig

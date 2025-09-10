@@ -83,19 +83,23 @@ internal class Program : ApplicationContext
             // Raw input からの移動イベントを処理
             _rawInput.DeviceMoved += OnDeviceMoved;
             
-            // 起動時の接続状態を列挙して初期化
-            try
+            // デバイス接続状態確認（オプション）
+            if (_config.EnableDeviceConnectionCheck)
             {
-                var initial = _rawInput.GetCurrentlyConnectedMouseDevicePaths();
-                foreach (var path in initial)
+                // 起動時の接続状態を列挙して初期化
+                try
                 {
-                    _connectedDevicePaths.Add(path);
+                    var initial = _rawInput.GetCurrentlyConnectedMouseDevicePaths();
+                    foreach (var path in initial)
+                    {
+                        _connectedDevicePaths.Add(path);
+                    }
                 }
+                catch { /* 列挙失敗は無視 */ }
+
+                // 接続変更通知を購読
+                _rawInput.DeviceConnectionChanged += OnDeviceConnectionChanged;
             }
-            catch { /* 列挙失敗は無視 */ }
-            
-            // 接続変更通知を購読
-            _rawInput.DeviceConnectionChanged += OnDeviceConnectionChanged;
             
             // 初期状態での一時停止/再開を反映
             EvaluateAutoSwitchSuspension();
@@ -280,7 +284,7 @@ internal class Program : ApplicationContext
         if (_isInitializing || _isPairing)
             return;
         
-        // 接続状況に応じて自動切替の一時停止/再開を判定
+        // 接続状況に応じて自動切替の一時停止/再開を判定（機能が有効な場合のみ）
         EvaluateAutoSwitchSuspension();
         
         // Track button press state per device for drag/hold locking
@@ -375,6 +379,8 @@ internal class Program : ApplicationContext
     private void EvaluateAutoSwitchSuspension()
     {
         if (_config == null || _policy == null || _tray == null) return;
+        // 機能が無効なら何もしない
+        if (!_config.EnableDeviceConnectionCheck) return;
         // 設定上のデバイスが2台未満なら対象外
         var configured = new System.Collections.Generic.HashSet<string>(System.StringComparer.OrdinalIgnoreCase);
         foreach (var dev in _config.Devices.Values)

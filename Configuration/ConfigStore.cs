@@ -23,6 +23,8 @@ public class ConfigStore
     public bool EnableMousePositionMemory { get; set; } = true;
     public bool ExclusiveActiveMouse { get; set; } = true;
     public int ActiveHoldMs { get; set; } = 150;
+    public bool EnableDeviceConnectionCheck { get; set; } = true;
+    public bool CheckCurrentDesktop { get; set; } = true;
 
     public Dictionary<string, DeviceInfo> Devices { get; set; } = new Dictionary<string, DeviceInfo>();
     public Dictionary<string, string> Bindings { get; set; } = new Dictionary<string, string>();
@@ -172,7 +174,8 @@ public class ConfigStore
             {
                 threshold = ThresholdMovement,
                 hysteresis_ms = HysteresisMs,
-                max_per_sec = MaxSwitchPerSec
+                max_per_sec = MaxSwitchPerSec,
+                check_current_desktop = CheckCurrentDesktop
             },
             ui = new UiConfig
             {
@@ -180,7 +183,8 @@ public class ConfigStore
                 swap_bindings = SwapBindings,
                 enable_mouse_position_memory = EnableMousePositionMemory,
                 exclusive_active_mouse = ExclusiveActiveMouse,
-                active_hold_ms = ActiveHoldMs
+                active_hold_ms = ActiveHoldMs,
+                enable_device_connection_check = EnableDeviceConnectionCheck
             },
             impl = new ImplementationConfig
             {
@@ -207,6 +211,8 @@ public class ConfigStore
             config.ThresholdMovement = data.@switch.threshold;
             config.HysteresisMs = data.@switch.hysteresis_ms;
             config.MaxSwitchPerSec = data.@switch.max_per_sec;
+            // 新しい設定項目の読み込み（デフォルトはtrue）
+            config.CheckCurrentDesktop = data.@switch.check_current_desktop;
         }
         
         if (data?.ui != null)
@@ -219,6 +225,8 @@ public class ConfigStore
                 config.ExclusiveActiveMouse = data.ui.exclusive_active_mouse.Value;
             if (data.ui.active_hold_ms.HasValue)
                 config.ActiveHoldMs = data.ui.active_hold_ms.Value;
+            if (data.ui.enable_device_connection_check.HasValue)
+                config.EnableDeviceConnectionCheck = data.ui.enable_device_connection_check.Value;
         }
         
         if (data?.impl != null)

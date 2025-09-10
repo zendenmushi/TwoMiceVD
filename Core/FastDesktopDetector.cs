@@ -212,6 +212,26 @@ public class FastDesktopDetector : IDisposable
         }
     }
 
+    /// <summary>
+    /// 現在のデスクトップIDを安全に取得します。失敗時は例外を発生させません。
+    /// </summary>
+    /// <param name="desktopId">取得されたデスクトップID</param>
+    /// <returns>取得に成功した場合はtrue、失敗した場合はfalse</returns>
+    public bool TryGetCurrentDesktopId(out string? desktopId)
+    {
+        desktopId = null;
+        try
+        {
+            desktopId = GetCurrentDesktopId();
+            return desktopId != null;
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"[FastDetector] 検出失敗: {ex.Message}");
+            return false;
+        }
+    }
+
     public async Task<string?> GetCurrentDesktopIdWithRecovery()
     {
         try

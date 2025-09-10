@@ -18,6 +18,11 @@ public class VirtualDesktopController : IDisposable
     private readonly Dictionary<int, Point> _desktopCursorPositions = new Dictionary<int, Point>();
     private VirtualDesktopManagerWrapper? _vdManager;
     private FastDesktopDetector? _fastDetector;
+    
+    /// <summary>
+    /// 最後に切り替えたデスクトップIDを記憶（オプション無効時の比較用）
+    /// </summary>
+    private string? _lastSwitchedDesktopId = null;
     private bool _disposed = false;
     private readonly ConfigStore? _config;
     private readonly Control _uiInvoker;
@@ -61,22 +66,37 @@ public class VirtualDesktopController : IDisposable
     {
         System.Diagnostics.Debug.WriteLine($"[TwoMiceVD] SwitchTo呼び出し: desktopId={desktopId}");
 
-        // まず高速判定システムで現在のデスクトップを確認
-        string? currentDesktopId = GetCurrentDesktopIdFast();
-        if (currentDesktopId != null)
+        // 現在のデスクトップを確認するかどうか
+        if (_config?.CheckCurrentDesktop ?? true)
         {
-            // 高速判定成功：GUIDをデスクトップIDに変換して比較
-            string? targetDesktopId = ConvertToDesktopId(desktopId);
-            if (targetDesktopId != null && currentDesktopId == targetDesktopId)
+            // オプション有効: 実際の現在デスクトップを確認
+            if (_fastDetector != null && _fastDetector.TryGetCurrentDesktopId(out string? currentDesktopId) && currentDesktopId != null)
             {
-                System.Diagnostics.Debug.WriteLine($"[TwoMiceVD] 既に目的のデスクトップ({targetDesktopId})にいます - 切り替えをスキップ");
-                return;
+                // 高速判定成功：GUIDをデスクトップIDに変換して比較
+                string? targetDesktopId = ConvertToDesktopId(desktopId);
+                if (targetDesktopId != null && currentDesktopId == targetDesktopId)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[TwoMiceVD] 既に目的のデスクトップ({targetDesktopId})にいます - 切り替えをスキップ");
+                    _lastSwitchedDesktopId = targetDesktopId;  // 記憶を更新
+                    return;
+                }
+                System.Diagnostics.Debug.WriteLine($"[TwoMiceVD] デスクトップ切り替えが必要: {currentDesktopId} → {targetDesktopId}");
             }
-            System.Diagnostics.Debug.WriteLine($"[TwoMiceVD] デスクトップ切り替えが必要: {currentDesktopId} → {targetDesktopId}");
+            else
+            {
+                System.Diagnostics.Debug.WriteLine("[TwoMiceVD] 高速判定失敗、通常の切り替え処理を実行");
+            }
         }
         else
         {
-            System.Diagnostics.Debug.WriteLine("[TwoMiceVD] 高速判定失敗、通常の切り替え処理を実行");
+            // オプション無効: 記憶している位置と比較
+            string? targetDesktopId = ConvertToDesktopId(desktopId);
+            if (targetDesktopId != null && _lastSwitchedDesktopId == targetDesktopId)
+            {
+                System.Diagnostics.Debug.WriteLine($"[TwoMiceVD] 記憶上、既に{targetDesktopId}にいるはず - 切り替えをスキップ");
+                return;
+            }
+            System.Diagnostics.Debug.WriteLine($"[TwoMiceVD] 記憶に基づく切り替え: {_lastSwitchedDesktopId ?? "不明"} → {targetDesktopId}");
         }
         
         // GUIDかどうかを判定
@@ -93,6 +113,8 @@ public class VirtualDesktopController : IDisposable
                 {
                     System.Diagnostics.Debug.WriteLine($"[TwoMiceVD] GUID→デスクトップキー変換: {targetGuid} → {targetKey}");
                     SwitchUsingShortcuts(targetKey);
+                    // 切り替え成功後、記憶を更新
+                    _lastSwitchedDesktopId = ConvertToDesktopId(desktopId);
                     return;
                 }
                 
@@ -101,11 +123,14 @@ public class VirtualDesktopController : IDisposable
             
             // GUID解決不可のためショートカット方式で切り替え（VD0と仮定）
             SwitchUsingShortcuts("VD0");
+            _lastSwitchedDesktopId = ConvertToDesktopId("VD0");
         }
         else
         {
             // インデックスモード: ショートカット方式で切り替え
             SwitchUsingShortcuts(desktopId);
+            // 切り替え成功後、記憶を更新
+            _lastSwitchedDesktopId = ConvertToDesktopId(desktopId);
         }
     }
 
